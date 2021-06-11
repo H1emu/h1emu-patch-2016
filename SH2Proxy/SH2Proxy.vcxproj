@@ -179,7 +179,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>dinput8.def</ModuleDefinitionFile>
       <AdditionalDependencies>winmm.lib;user32.lib;$(OutputPath)MinHook.lib;$(OutputPath)udis86.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Users\csm45\Desktop\AdminClient dinput8\x64\Debug</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>

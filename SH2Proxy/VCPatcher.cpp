@@ -34,8 +34,8 @@ void* ConnectionMgrDummy = (void*)0x143B3E498;
 #include <ws2tcpip.h>
 #include <stdio.h>
 #include <windows.h>
-#include <udis86.h>
-
+//#include <udis86.h>
+#include "..\SH2Proxy\Vendor\udis86\udis86.h"
 #pragma comment(lib, "ws2_32.lib")
 
 static bool(*g_origSetupInitialConnection)(intptr_t a1);
@@ -740,11 +740,6 @@ void OnIntentionalCrash1() {
 	printf("Should have crashed, but will continue executing, return address is: %p\n", _ReturnAddress());
 }
 
-void OnIntentionalCrash2() {
-	printf("OnIntentionalCrash2****************\n\n\n\n\n\n\n");
-	printf("Should have crashed, but will continue executing, return address is: %p\n", _ReturnAddress());
-}
-
 static void(*processInput_orig)(void* a1);
 static void processInput(void* a1) {
 	processInput_orig(a1);
@@ -812,7 +807,7 @@ bool VCPatcher::Init()
 	// blocks 0xBADBEEF
 	hook::jump(0x14032DC60, OnIntentionalCrash); //Should have crashed, but continue executing... (sendself, lightweightToFullPc triggers this)
 
-	hook::jump(0x140C06FD0, OnIntentionalCrash2);// exception inside 140C06FD0 somewhere
+	hook::jump(0x140C06FD0, OnIntentionalCrash1);// exception inside 140C06FD0 somewhere
 
 	//hook::return_function_vp(0x1408B4230)
 

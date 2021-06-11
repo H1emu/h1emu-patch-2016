@@ -1,0 +1,449 @@
+#include "stdafx.h"
+#include <iostream>
+#include <fstream>
+#include "VCPatcher.h"
+#include "Hooking.Patterns.h"
+#include "Utils.h"
+#include <stdio.h>
+#include <MinHook.h>
+
+//FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+#define CONSOLE_ENABLED_THAT_CRASHES
+#pragma comment(lib, "C:\\Users\\Ignacio\\Desktop\\Projects\\Resources (Projects that are not mine)\\H1Z1_ModOnline_Attempt\\x64\\Debug\\MinHook.lib") //change according to your lib path
+
+static bool consoleShowing = false;
+static float lasttext;
+static bool windowShown;
+DWORD CreateWindowExaddr = 0;				//Global DWORD(4-bytes) to store the address of the CreateWindowEx API
+BYTE backupCW[6];						//Array of bytes to save the original code when we hook the CreateWindowEx API
+DWORD ShowWindowExAddr = 0;
+BYTE backupShowWindow[6];
+intptr_t* MenuManager = (intptr_t*)0x868638;
+void* ConnectionMgrDummy = (void*)0x143B3E498;
+
+#include "timer.h"
+#include <iostream>
+
+static intptr_t(*g_origWaitForWorldReady)(intptr_t a1);
+static bool(*g_origSetupInitialConnection)(intptr_t a1);
+static bool(*g_InitGameWorld)(intptr_t a1);
+static bool(*g_orig_TrySignalLaunchPadEvent)(intptr_t a1);
+static bool(*g_RegisterCommands)();
+static void(*g_InitCharacterStuff)(intptr_t a1, intptr_t a2, intptr_t a3, intptr_t a4);
+static void(*g_BeginZoningAreaWrapper)(intptr_t a1, float possiblyRadius);
+
+static intptr_t WaitForWorldReady(intptr_t a1)
+{
+	intptr_t worldReady = g_origWaitForWorldReady(a1);
+	return worldReady;
+}
+
+intptr_t LaunchPadA1Ptr;
+static bool TrySignalLaunchPadEvent(intptr_t a1) 
+{
+	LaunchPadA1Ptr = a1;
+	g_origSetupInitialConnection(a1);
+	return g_orig_TrySignalLaunchPadEvent(a1);
+}
+
+static void doSomeLogging(const char* logEntry, va_list args) {
+	if (!consoleShowing)
+	{
+		//Allocate a console
+		AllocConsole();
+		AttachConsole(GetCurrentProcessId());
+		freopen("CON", "w", stdout);
+		consoleShowing = true;
+	}
+
+	FILE* logFile = _wfopen(L"GameMessages.log", L"a");
+	if (logFile)
+	{
+		char bufferOut[1024];
+#ifdef CONSOLE_ENABLED_THAT_CRASHES
+		char bufferOutConsole[2048];
+#endif
+		//va_list argptr;
+		char end_char = logEntry[strlen(logEntry) - 1];
+		_snprintf(bufferOut, sizeof(bufferOut), (end_char == '\n') ? "%s" : "%s\n", logEntry);
+		//va_start(argptr, logEntry);
+		vfprintf(logFile, bufferOut, args);
+#ifdef CONSOLE_ENABLED_THAT_CRASHES
+		vsprintf(bufferOutConsole, bufferOut, args);
+#endif
+		va_end(args);
+		fclose(logFile);
+#ifdef CONSOLE_ENABLED_THAT_CRASHES
+		printf(bufferOutConsole);
+#endif
+	}
+}
+
+#if 1
+void logFuncCustom(intptr_t unka1, const char* logEntry, ...) {
+
+	va_list args;
+	va_start(args, logEntry);
+	doSomeLogging(logEntry, args);
+	va_end(args);
+
+	return;
+}
+#endif
+
+static void(*logFuncCustom1_orig)(intptr_t a1, intptr_t size, const char* logEntry, ...);
+static void logFuncCustom1(intptr_t a1, intptr_t size, const char* logEntry, ...) {
+
+	logFuncCustom1_orig(a1, size, logEntry);
+
+	va_list args;
+	va_start(args, logEntry);
+	doSomeLogging(logEntry, args);
+	va_end(args);
+
+	return;
+}
+
+static void(*logFuncCustom2_orig)(int loglevel, intptr_t* unka1, const char* logEntry, va_list args);
+static void logFuncCustom2(int loglevel, intptr_t* unka1, const char* logEntry, va_list args) {
+
+	logFuncCustom2_orig(loglevel, unka1, logEntry, args);
+
+	doSomeLogging(logEntry, args);
+	return;
+}
+
+static void(*logFuncCustom_orig3)(char* a1, char* a2, char* a3, int a4, va_list args);
+static void logFuncCustom3(char* a1, char* a2, char* a3, int a4, va_list args) {
+
+	logFuncCustom_orig3(a1, a2, a3, a4, args);
+
+	doSomeLogging(a2, args);
+	return;
+}
+
+static void(*logFuncCustom4_orig)(intptr_t* unka1, const char* logEntry, va_list args);
+static void logFuncCustom4(intptr_t* unka1, const char* logEntry, va_list args) {
+
+	logFuncCustom4_orig(unka1, logEntry, args);
+	doSomeLogging(logEntry, args);
+	return;
+}
+
+enum ClientStates {
+	cClientRunStateNone = 0,
+	cClientRunStateAdminBackdoorLoginStart = 1,
+	cClientRunStateAdminBackdoorLogin,
+	cClientRunStateAdminPreInitialize,
+	cClientRunStatePreInitialize,
+	cClientRunStateVerifyPsnLogin = 6,
+	cClientRunStateCheckPsnChatRestrictions,
+	cClientRunStateWaitForPsnChatRestrictionsDialog,
+	cClientRunStateCheckPsnUgcRestrictions,
+	cClientRunStateWaitForPsnUgcRestrictionsDialog,
+	cClientRunStateWaitingForPsnLogin,
+	cClientRunStateStartingLogin,
+	cClientRunStateWaitForCharacterList,
+	cClientRunStateWaitForCharacterSelectLoad,
+	cClientRunStateCharacterCreateOrDelete,
+	cClientRunStateLoggingIn,
+	cClientRunStateNetInitialize,
+	cClientRunStateConnecting,
+	cClientRunStatePostInitialize,
+	cClientRunStateWaitForInitialDeployment,
+	cClientRunStatePostInitialDeployment,
+	cClientRunStateWaitForFirstZone,
+	cClientRunStateWaitForConfirmationPacket,
+	cClientRunStatePostWaitForFirstZone,
+	cClientRunStateWaitForContinue,
+	cClientRunStateRunning,
+	cClientRunStateWaitForTeleport,
+	cClientRunStateWaitForZoneLoad,
+	cClientRunStateWaitingForReloginSession,
+	cClientRunStateStartingRelogin,
+	cClientRunStateVerifyXBLiveLogin = 34,
+	cClientRunStateShuttingDown
+};
+
+static bool(*g_origRespawnWindow__DisplayRespawn)(intptr_t a1);
+static bool RespawnWindow__DisplayRespawn(intptr_t a1)
+{
+	g_origRespawnWindow__DisplayRespawn(a1);
+	return true; //never fail
+}
+
+static void*(*g_origAllocSomeMemory)(int size);
+static void*(*g_instanceUnknownClass)(void* a1);
+void* unk_143B3E5B8 = (void*)0x143B3E5B8;
+
+std::atomic<bool> alreadyDoneDeployment = false;
+static void(*g_orig_TransitionClientRunState)(intptr_t unka1, int transitionState);
+static void TransitionClientRunState(intptr_t unka1, int transitionState)
+{
+#if 1
+	switch (transitionState) 
+	{
+		case cClientRunStateShuttingDown: {
+			bool shuttingdown = true;
+			printf("tried to shut down!!");
+			transitionState = cClientRunStateRunning;
+			break;
+		}
+		case cClientRunStateRunning: {
+			if (!alreadyDoneDeployment) 
+			{
+				transitionState = cClientRunStateWaitForCharacterList;//cClientRunStateWaitForTeleport;//cClientRunStateWaitForTeleport;
+				//g_BeginZoningAreaWrapper(unka1, 1000.0f);
+				//g_RegisterCommands();
+				alreadyDoneDeployment = true;
+			}
+			break;
+		}
+		case cClientRunStateWaitForFirstZone: {
+			void* ptr = g_origAllocSomeMemory(520);
+			if ( ptr )
+				ptr = g_instanceUnknownClass(ptr);
+
+			unk_143B3E5B8 = ptr;
+
+			transitionState = cClientRunStateWaitForZoneLoad;//cClientRunStateRunning;//cClientRunStatePostWaitForFirstZone;
+			break;
+		}
+		case cClientRunStateWaitForConfirmationPacket: {
+			transitionState = cClientRunStatePostWaitForFirstZone;//cClientRunStateWaitForFirstZone;//cClientRunStateWaitForZoneLoad;//cClientRunStateRunning;//cClientRunStatePostWaitForFirstZone;
+			break;
+		}
+		case cClientRunStatePostWaitForFirstZone: {
+			transitionState = cClientRunStateWaitForTeleport;//cClientRunStateWaitForFirstZone;//cClientRunStateWaitForZoneLoad;//cClientRunStateRunning;//cClientRunStatePostWaitForFirstZone;
+			break;
+		}
+		case cClientRunStateNetInitialize:
+		{
+			void *addy = _ReturnAddress();
+
+			//printf("received failure event (cClientRunStateLoggingIn)\n");
+			//19 post-initialize, 20 = complete? 14 = cClientRunStateWaitForCharacterSelectLoad
+			transitionState = cClientRunStatePostInitialDeployment;//cClientRunStateWaitForCharacterSelectLoad; //running //4 pre-initialize //was 14 (menu) //15 shows THE loading screen
+			
+			//g_origWaitForWorldReady(unka1); //connectionmgr is null, wtf
+
+			
+			//intptr_t who = *(intptr_t*)(LaunchPadA1Ptr + 0x38B28); //The function below has this requirement
+			//*(intptr_t*)(LaunchPadA1Ptr + 0x38B28) = 1;
+			g_InitGameWorld(LaunchPadA1Ptr);
+			g_origWaitForWorldReady(LaunchPadA1Ptr);
+			//g_InitCharacterStuff(LaunchPadA1Ptr, 0, 0, 0);
+			break;
+		}
+		case cClientRunStateLoggingIn:
+		{
+			void *addy = _ReturnAddress();
+
+			printf("login failure (16)\n");
+			//19 post-initialize, 20 = complete?
+			transitionState = cClientRunStateCharacterCreateOrDelete; //15 shows the loading screen and everything seems nice 26 is clientstate running 15 = cClientRunStateCharacterCreateOrDelete
+			
+			break;
+		}
+	}
+#endif
+	g_orig_TransitionClientRunState(unka1, transitionState);
+	return;
+}
+
+bool alreadyDone = false;
+static void(*g_origLoadConfigFile)(intptr_t a1, bool a2);
+static void(*g_origOnGameStartup)(intptr_t a1);
+static void OnGameStartup(intptr_t a1)
+{
+	int switchCaseReason = *(int*)(a1 + 0x202208);
+	int switchCaseReason2 = *(int*)(a1 + 0x315E0);
+
+	//attickminimalrendering workaround
+	*(intptr_t*)(a1 + 0x231873) = 1; //render timer related thing, set to 1
+	*(intptr_t*)(a1 + 0x389C1) = 1; //render timer related thing, set to 1
+	
+	if (switchCaseReason == 0 || switchCaseReason2 == 0)
+	{
+		if (!alreadyDone)
+			*(int*)(a1 + 0x315E0) = cClientRunStatePreInitialize;//4; //skip login
+
+		alreadyDone = true;
+	}
+
+	g_origOnGameStartup(a1);
+	return;
+}
+
+static char*(*g_origGetShutdownReasonString)(int index);
+static char* GetShutdownReasonString(int index)
+{
+	char* string = g_origGetShutdownReasonString(index);
+	logFuncCustom(0, "(%d), %s", index, string);
+	return string; //index is 6 when it fails which is assigned by shutdown (35)
+}
+
+static void(*g_orig_SetupAuthData)(intptr_t a1);
+static void SetupAuthData(intptr_t a1)
+{
+	*(intptr_t*)(a1 + 0x31B68) = 0; //feed it a bunch of lies
+	*(intptr_t*)(a1 + 0x31F20) = 0;
+	*(intptr_t*)(a1 + 0x31F21) = 0;
+
+	g_orig_SetupAuthData(a1);
+	return;
+}
+
+#ifdef CONSOLE_ENABLED_THAT_CRASHES
+static HookFunction hookFunction([]()
+{
+});
+#endif
+
+bool ReturnTrue() {
+	return true;
+}
+
+extern VCPatcher gl_patcher;
+
+static void ourExit(intptr_t ucode) {
+	void* addy = _ReturnAddress();
+	printf("%p", addy);
+	exit(ucode);
+}
+
+static bool(*g_origConstructDisplay)(intptr_t a1);
+static bool ConstructDisplay(intptr_t a1)
+{
+	g_origConstructDisplay(a1);
+	return true; //never fail
+}
+
+static bool(*g_origOnReceiveServer)(intptr_t a1, intptr_t a2, bool a3);
+static bool OnReceiveServer(intptr_t a1, intptr_t a2, bool a3)
+{
+	g_origOnReceiveServer(a1, a2, a3);
+	return true; //never fail
+}
+
+bool VCPatcher::Init()
+{
+#if 1
+	auto loc = hook::pattern("40 53 48 83 EC 20 8B D9 E8 ? ? ? ? 84 C0 74 28").count(1).get(0).get<char>(0x42);
+	//loc = hook::get_call(loc);
+	hook::call(loc, ourExit);
+
+	loc = hook::pattern("48 C7 05 ? ? ? ? ? ? ? ? 48 8B 03 48 8B CB").count(1).get(0).get<char>(0x21);
+	hook::call(loc, ourExit);
+#endif
+
+	//Logging
+	loc = hook::pattern("48 83 EC 38 3B 0D ? ? ? ? 44").count(1).get(0).get<char>(0);
+	MH_CreateHook((char*)loc, logFuncCustom2, (void**)&logFuncCustom2_orig);
+	MH_CreateHook((char*)0x1404B90E0, logFuncCustom3, (void**)&logFuncCustom_orig3);
+	//MH_CreateHook((char*)0x14034BFA0, logFuncCustom1, (void**)&logFuncCustom1_orig); //Logs clock timeeee
+	//MH_CreateHook((char*)0x1402933B0, logFuncCustom4, (void**)&logFuncCustom4_orig); //logs clock time amongst other things
+	
+	//Transition related
+	loc = hook::pattern("40 53 55 56 57 41 56 48 83 EC 60 48 C7 44 24 ? ? ? ? ? 8B EA").count(1).get(0).get<char>(0);
+	MH_CreateHook((char*)loc, TransitionClientRunState, (void**)&g_orig_TransitionClientRunState);
+
+	//Game startup
+	loc = hook::pattern("48 89 85 ? ? ? ? 48 8B F1 48 89 8D").count(1).get(0).get<char>(-0x3F);
+	MH_CreateHook((char*)loc, TrySignalLaunchPadEvent, (void**)&g_orig_TrySignalLaunchPadEvent);
+
+	hook::jump(0x140D02820, ReturnTrue); //openevent bah, return true
+	hook::jump(0x140D02B10, ReturnTrue); //ProcessSyncEvent
+
+	MH_CreateHook((char*)0x140435910, OnGameStartup, (void**)&g_origOnGameStartup);
+	MH_CreateHook((char*)0x1404CDAE0, GetShutdownReasonString, (void**)&g_origGetShutdownReasonString);
+
+	loc = hook::pattern("E8 ? ? ? ? 4C 8B C8 41 83 CE FF 44 89 74 24").count(1).get(0).get<char>(-0x81);
+	g_origLoadConfigFile = (decltype(g_origLoadConfigFile))((loc));
+	MH_CreateHook((char*)0x1404AB950, WaitForWorldReady, (void**)&g_origWaitForWorldReady);
+
+	//g_origWaitForWorldReady = (decltype(g_origWaitForWorldReady))((0x1404AB950));
+	g_origSetupInitialConnection = (decltype(g_origSetupInitialConnection))((0x1404A2090));
+	g_InitGameWorld = (decltype(g_InitGameWorld))((0x14046B140));
+	g_RegisterCommands = (decltype(g_RegisterCommands))((0x14132AF00));
+	g_InitCharacterStuff = (decltype(g_InitCharacterStuff))((0x140476D90));
+	g_BeginZoningAreaWrapper = (decltype(g_BeginZoningAreaWrapper))((0x1404AAC70));
+	g_origAllocSomeMemory = (decltype(g_origAllocSomeMemory))((0x140338980));
+	g_instanceUnknownClass = (decltype(g_instanceUnknownClass))((0x1407DAC50));
+
+	//hook::return_function_vp(0x140367F00); //return this returnbadcode func
+	//MH_CreateHook((char*)0x1404A60E0, SetupAuthData, (void**)&g_orig_SetupAuthData);
+	//hook::put<uint8_t>((char*)0x1404A6427, 0xEB); //ignore condition statement
+	//hook::jump(0x14046F52F, 0x14046F990); //skip ini file loading for now
+	//hook::nopVP(0x14046F52F, 1121); //that's a lot of nops! (skip ini file reading loop)
+
+	hook::nopVP(0x14041AD53, 6); //more obfuscation
+	hook::nopVP(0x140415F3E, 6); //some obfuscated call inside constructdisplay3d
+
+	//Net related
+	hook::put<uint8_t>((char*)0x1404A2184, 0x7F); //Skip this thing, try to connect anyway (disabled/not called due to transitionstate changes)
+	hook::jump(0x140414A90, ReturnTrue); //return true on csc check function
+	hook::return_function_vp(0x14158AA60); //don't run baseapi requests
+	hook::return_function_vp(0x140411C00); //don't kick for being idle wtf
+
+	MH_CreateHook((char*)0x14075E680, OnReceiveServer, (void**)&g_origOnReceiveServer);
+
+	//Display
+	MH_CreateHook((char*)0x140415E50, ConstructDisplay, (void**)&g_origConstructDisplay);
+	
+	//Level Init
+	hook::jump(0x1417F3CC0, ReturnTrue); //level init related, always return true
+
+	hook::return_function_vp(0x140663D60); //recipe related workaround, crashes due to nullptr + 0x160
+	hook::return_function_vp(0x1445D4ADD); //obfuscated
+
+	//bye connection mgr stuff (mandatory)
+	hook::jump(0x1417F3FA0, ReturnTrue); //mandatory or the game doesn't launch
+	hook::jump(0x14066C6A0, ReturnTrue); // ^
+	hook::jump(0x14066AB70, ReturnTrue);
+	//
+
+	//hook::jump(0x1404ABE70, ReturnTrue);
+
+	//End of level init related stuff
+
+	//Spawning
+	MH_CreateHook((char*)0x1404A3830, RespawnWindow__DisplayRespawn, (void**)&g_origRespawnWindow__DisplayRespawn);
+	hook::put<uint8_t>((char*)0x1404A5367, 0xEB); //Jump waitforworldready unknown condition statement
+
+	MH_EnableHook(MH_ALL_HOOKS);
+
+	return true;
+}
+
+/*
+
+static char*(*g_origGetShutdownReasonString)(int index);
+static char* GetShutdownReasonString(int index)
+{
+return g_origGetShutdownReasonString(index);
+}
+
+1404CDAE0
+
+*/
+
+bool VCPatcher::PatchResolution(D3DPRESENT_PARAMETERS* pPresentationParameters)
+{
+	pPresentationParameters->Windowed = true;
+	pPresentationParameters->Flags = 0;
+	pPresentationParameters->FullScreen_RefreshRateInHz = 0;
+	//pPresentationParameters->FullScreen_PresentationInterval = 0;
+
+	SetWindowPos(pPresentationParameters->hDeviceWindow, HWND_NOTOPMOST, 0, 0, pPresentationParameters->BackBufferWidth, pPresentationParameters->BackBufferHeight, SWP_SHOWWINDOW);
+	SetWindowLong(pPresentationParameters->hDeviceWindow, GWL_STYLE, WS_POPUP | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU | WS_VISIBLE);
+	return true;
+}
+
+static struct MhInit
+{
+	MhInit()
+	{
+		MH_Initialize();
+	}
+} mhInit;

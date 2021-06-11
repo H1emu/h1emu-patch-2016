@@ -1,0 +1,5 @@
+LIBRARY "d3d9"
+EXPORTS
+	Direct3DCreate9=D3D9_wrapper
+	D3DPERF_EndEvent=D3DPERF_EndEvent
+	D3DPERF_BeginEvent=D3DPERF_BeginEvent

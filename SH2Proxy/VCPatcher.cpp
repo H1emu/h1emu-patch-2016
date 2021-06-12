@@ -757,46 +757,40 @@ static void sub_14039E0A0(void* a1) {
 	sub_14039E0A0_orig(a1);
 }
 
+/*
 // resources
-
 static void(*resourceEventBaseRead_orig)(void* a1, void* a2, void* a3);
 static void resourceEventBaseRead(void* a1, void* a2, void* a3) {
 	printf("********resourceEventBaseRead\n\n");
 	resourceEventBaseRead_orig(a1, a2, a3);
 }
-
 static void(*removeCharacterResourceRead_orig)(void* a1, void* a2, void* a3, void* a4);
 static void removeCharacterResourceRead(void* a1, void* a2, void* a3, void* a4) {
 	printf("********removeCharacterResourceRead\n\n");
 	removeCharacterResourceRead_orig(a1, a2, a3, a4);
 }
-
 static void(*updateCharacterResourceRead_orig)(void* a1, void* a2, void* a3, void* a4);
 static void updateCharacterResourceRead(void* a1, void* a2, void* a3, void* a4) {
 	printf("********updateCharacterResourceRead\n\n");
 	updateCharacterResourceRead_orig(a1, a2, a3, a4);
 }
-
 static void(*setCharacterResourceRead_orig)(void* a1, void* a2, void* a3, void* a4);
 static void setCharacterResourceRead(void* a1, void* a2, void* a3, void* a4) {
 	printf("********setCharacterResourceRead\n\n");
 	setCharacterResourceRead_orig(a1, a2, a3, a4);
 }
-
 static void(*setCharacterResourcesRead_orig)(void* a1, void* a2, void* a3, void* a4);
 static void setCharacterResourcesRead(void* a1, void* a2, void* a3, void* a4) {
 	printf("********setCharacterResourcesRead\n\n");
 	setCharacterResourcesRead_orig(a1, a2, a3, a4);
 }
-
 static void(*setCharacterResource_orig)(void* a1, void* a2, void* a3, void* characterResource);
 static void setCharacterResource(void* a1, void* a2, void* a3, void* characterResource) {
 	printf("********setCharacterResource\n\n");
 	setCharacterResource_orig(a1, a2, a3, characterResource);
 }
-
 // end of resources
-
+*/
 
 
 
@@ -816,18 +810,14 @@ bool VCPatcher::Init()
 
 	// ###################################################     Game hooks     ############################################################
 
+	/*
 	// resources
-
 	MH_CreateHook((char*)0x14058A4F0, resourceEventBaseRead, (void**)&resourceEventBaseRead_orig);
-
 	MH_CreateHook((char*)0x14058A5F0, removeCharacterResourceRead, (void**)&removeCharacterResourceRead_orig);
-
 	MH_CreateHook((char*)0x14058AAC0, updateCharacterResourceRead, (void**)&updateCharacterResourceRead_orig);
-
 	MH_CreateHook((char*)0x14058A6E0, setCharacterResourceRead, (void**)&setCharacterResourceRead_orig);
-
 	MH_CreateHook((char*)0x14058A8D0, setCharacterResourcesRead, (void**)&setCharacterResourcesRead_orig);
-
+	*/
 
 	
 	MH_CreateHook((char*)0x14058B9C0, setCharacterResource, (void**)&setCharacterResource_orig);

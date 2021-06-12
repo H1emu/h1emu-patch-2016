@@ -818,9 +818,8 @@ bool VCPatcher::Init()
 	MH_CreateHook((char*)0x14058A6E0, setCharacterResourceRead, (void**)&setCharacterResourceRead_orig);
 	MH_CreateHook((char*)0x14058A8D0, setCharacterResourcesRead, (void**)&setCharacterResourcesRead_orig);
 	MH_CreateHook((char*)0x14058B9C0, setCharacterResource, (void**)&setCharacterResource_orig);
-	*/
-
 	// end of resources
+	*/
 
 	//MH_CreateHook((char*)0x1403FA350, ClientRunStateManager, (void**)&ClientRunStateManager_orig);
 

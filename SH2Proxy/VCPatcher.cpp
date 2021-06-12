@@ -142,7 +142,7 @@ std::string getTimeStr() {
 }
 
 static void doSomeLogging(const char* fmt, va_list args) {
-	tryAllocConsole();
+	//tryAllocConsole();
 
 	FILE* logFile = _wfopen(L"GameMessages.log", L"a");
 	if (logFile)

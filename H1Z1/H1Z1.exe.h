@@ -330,3 +330,96 @@ struct __declspec(align(1)) LightweightPc
 	_DWORD unknownDword8;
 	_BYTE unknownByte4;
 };
+
+struct /*__declspec(align(2))*/ itemDefinitionStruct1
+{
+	_BYTE gap0[8];
+	_DWORD dword8;
+	_BYTE gapC[4];
+	_DWORD dword10;
+	_DWORD dword14;
+	_DWORD dword18;
+	_BYTE gap1C[12];
+	_DWORD dword28;
+	_DWORD dword2C;
+	_DWORD dword30;
+	_DWORD dword34;
+	_DWORD dword38;
+	_DWORD dword3C;
+	_DWORD dword40;
+	_DWORD dword44;
+	__int64 int6448;
+	_BYTE gap50[16];
+	__int64 int6460;
+	_BYTE gap68[16];
+	__int64 int6478;
+	_BYTE gap80[16];
+	__int64 int6490;
+	_BYTE gap98[16];
+	_DWORD dwordA8;
+	_DWORD dwordAC;
+	_DWORD dwordB0;
+	_DWORD dwordB4;
+	_DWORD dwordB8;
+	_DWORD dwordBC;
+	_DWORD dwordC0;
+	_DWORD dwordC4;
+	_DWORD dwordC8;
+	_DWORD dwordCC;
+	_DWORD dwordD0;
+	_DWORD dwordD4;
+	_DWORD dwordD8;
+	_DWORD dwordDC;
+	_DWORD dwordE0;
+	_DWORD dwordE4;
+	_DWORD dwordE8;
+	_DWORD dwordEC;
+	_DWORD dwordF0;
+	_DWORD dwordF4;
+	_DWORD dwordF8;
+	_DWORD dwordFC;
+	_DWORD dword100;
+	_DWORD dword104;
+	__int64 int64108;
+	_BYTE gap110[16];
+	__int64 int64120;
+	_BYTE gap128[16];
+	_DWORD dword138;
+	_DWORD dword13C;
+	_DWORD dword140;
+	_DWORD dword144;
+	_DWORD dword148;
+	_DWORD dword14C;
+	_DWORD dword150;
+	_DWORD dword154;
+	_DWORD dword158;
+	_DWORD dword15C;
+	_DWORD dword160;
+	_BYTE gap164[4];
+	__int64 int64168;
+	_BYTE gap170[16];
+	_DWORD dword180;
+	_BYTE gap184[4];
+	_DWORD dword188;
+	_DWORD dword18C;
+	_DWORD dword190;
+	_BYTE gap194[12];
+	_BYTE byte1A0;
+	_BYTE byte1A1;
+};
+
+struct __declspec(align(2)) DataLoadByPacket
+{
+	char* _buffer;
+	int bufferSize;
+	_BYTE gapC[4];
+	char* pBuffer;
+	char* pBufferEnd;
+	__int16 failureFlag;
+};
+
+struct IncomingPacket
+{
+	BYTE gap0[8];
+	DWORD packetType;
+};

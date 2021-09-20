@@ -456,6 +456,13 @@ static void sub_1406F3340Read(void* a1, DataLoadByPacket* buffer) {
 	sub_1406F3340Read_orig(a1, buffer);
 }
 
+/*
+static void(*WriteStringToClassMember_orig)(__int64 *classMemberVar, char *data, int length);
+static void WriteStringToClassMember(__int64 *classMemberVar, char *data, int length) {
+	printf("********WriteStringToClassMember\n\n");
+	WriteStringToClassMember_orig(classMemberVar, data, length);
+}
+
 void __fastcall ReadStringFromBuffer(DataLoadByPacket* buffer, __int64* destination)
 {
 	char* pBuffer; // r8
@@ -482,11 +489,17 @@ void __fastcall ReadStringFromBuffer(DataLoadByPacket* buffer, __int64* destinat
 	if (stringSize <= pBufferEnd - buffer->pBuffer)
 	{
 
-		//WriteStringToClassMember(destination, buffer->pBuffer, stringSize);
-
+		WriteStringToClassMember(destination, buffer->pBuffer, stringSize);
 		buffer->pBuffer += stringSize;
 		return;
 	}
+}
+*/
+
+static void(*ReadStringFromBuffer_orig)(DataLoadByPacket* buffer, __int64* destination);
+static void ReadStringFromBuffer(DataLoadByPacket* buffer, __int64* destination) {
+	printf("********ReadStringFromBuffer\n\n");
+	ReadStringFromBuffer_orig(buffer, destination);
 }
 
 static void ReadValueFromBuffer(void* destination, DataLoadByPacket* buffer, size_t size) {
@@ -503,6 +516,12 @@ static void ReadValueFromBuffer(void* destination, DataLoadByPacket* buffer, siz
 	}
 }
 
+static void(*ClientItemDefinitionStatsread_orig)(DataLoadByPacket* a1, void* a2);
+static void ClientItemDefinitionStatsread(DataLoadByPacket* a1, void* a2) {
+	printf("********ClientItemDefinitionStatsread\n\n");
+	//a1->failureFlag = 0; // force failFlag to 0 for now
+	ClientItemDefinitionStatsread_orig(a1, a2);
+}
 
 static void(*ItemDefinitionReadFromBuffer_orig)(ClientItemDefinition* a1, DataLoadByPacket* buffer);
 static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPacket* buffer) {
@@ -531,119 +550,69 @@ static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPac
 	printf("DESCRIPTION_ID: %d ", a1->baseitemdefinition0.DESCRIPTION_ID);
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.CONTENT_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.IMAGE_SET_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.TINT_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.HUD_IMAGE_SET_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.field_34, buffer, sizeof(int)); // unknownDword8
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.qword38, buffer, sizeof(int)); // unknownDword9
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.COST, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.ITEM_CLASS, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.PROFILE_OVERRIDE, buffer, sizeof(int));
 
-
-	ReadStringFromBuffer(buffer, &a1->baseitemdefinition0.MODEL_NAME);// MODEL_NAME
-	ReadStringFromBuffer(buffer, &a1->baseitemdefinition0.TEXTURE_ALIAS);// TEXTURE_ALIAS
-
+	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.MODEL_NAME);// MODEL_NAME
+	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.TEXTURE_ALIAS);// TEXTURE_ALIAS
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.GENDER_USAGE, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.dwordAC, buffer, sizeof(int)); // unknownDword14
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.CATEGORY_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.WEAPON_TRAIL_EFFECT_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.COMPOSITE_EFFECT_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.POWER_RATING, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.MIN_PROFILE_RANK, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.RARITY, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.ACTIVATABLE_ABILITY_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.ACTIVATABLE_ABILITY_SET_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.PASSIVE_ABILITY_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.PASSIVE_ABILITY_SET_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.MAX_STACK_SIZE, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.MIN_STACK_SIZE, buffer, sizeof(int));
 
-
-	ReadStringFromBuffer(buffer, &a1->baseitemdefinition0.TINT_ALIAS);// TINT_ALIAS
-
+	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.TINT_ALIAS);// TINT_ALIAS
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.TINT_GROUP_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.MEMBER_DISCOUNT, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.VIP_RANK_REQUIRED, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.RACE_SET_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.UI_MODEL_CAMERA_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.EQUIP_COUNT_MAX, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.CURRENCY_TYPE, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.DATASHEET_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.ITEM_TYPE, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.SKILL_SET_ID, buffer, sizeof(int));
 
-
-	ReadStringFromBuffer(buffer, &a1->baseitemdefinition0.OVERLAY_TEXTURE);// OVERLAY_TEXTURE
-	ReadStringFromBuffer(buffer, &a1->baseitemdefinition0.DECAL_SLOT);// DECAL_SLOT
+	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.OVERLAY_TEXTURE);// OVERLAY_TEXTURE
+	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.DECAL_SLOT);// DECAL_SLOT
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.OVERLAY_ADJUSTMENT, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.TRIAL_DURATION_SEC, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.NEXT_TRIAL_DELAY_SEC, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.CLIENT_USE_REQUIREMENT_ID, buffer, sizeof(int));
 
-
-	ReadStringFromBuffer(buffer, &a1->baseitemdefinition0.OVERRIDE_APPEARANCE);// OVERRIDE_APPEARANCE
-
+	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.OVERRIDE_APPEARANCE);// OVERRIDE_APPEARANCE
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.OVERRIDE_CAMERA_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword42, buffer, sizeof(int)); // unknownDword42
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword43, buffer, sizeof(int)); // unknownDword43
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword44, buffer, sizeof(int)); // unknownDword44
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.BULK, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.ACTIVE_EQUIP_SLOT_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.PASSIVE_EQUIP_SLOT_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.PASSIVE_EQUIP_SLOT_GROUP_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword49, buffer, sizeof(int)); // unknownDword49
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.GRINDER_REWARD_SET_ID, buffer, sizeof(int));
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.BUILD_BAR_GROUP_ID, buffer, sizeof(int));
 
-	ReadStringFromBuffer(buffer, &a1->baseitemdefinition0.unknownString7);// unknownString7
+	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.unknownString7);// unknownString7
 
 	char* v58 = buffer->pBuffer;
 	if (v58 + 1 <= buffer->pBufferEnd)
@@ -671,123 +640,22 @@ static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPac
 		buffer->failureFlag = 1;
 	}
 	
-	/*                TODO                          */
+	ReadValueFromBuffer(&a1->qword1F0, buffer, sizeof(int)); // unknownDword52
+	ReadValueFromBuffer(&a1->field_1F4, buffer, sizeof(int)); // unknownDword53
+	ReadValueFromBuffer(&a1->qword1F8, buffer, sizeof(int)); // unknownDword54
+	ReadValueFromBuffer(&a1->field_1FC, buffer, sizeof(int)); // unknownDword55
 
-	/*
-		v13 = buffer_16 + 1;
-	  if ( (buffer_16 + 1) <= buffer_24 )           // unknownDword52
-	  {
-		LODWORD(a1->qword1F0) = *buffer_16;
-	  }
-	  else
-	  {
-		LODWORD(a1->qword1F0) = 0;
-		LOBYTE(failFlag_32) = 1;
-		v13 = buffer_24;
-	  }
-	  v15 = v13 + 1;
-	  if ( (v13 + 1) <= buffer_24 )                 // unknownDword53
-	  {
-		HIDWORD(a1->qword1F0) = *v13;
-	  }
-	  else
-	  {
-		HIDWORD(a1->qword1F0) = 0;
-		LOBYTE(failFlag_32) = 1;
-		v15 = buffer_24;
-	  }
-	  v16 = v15 + 1;
-	  if ( (v15 + 1) <= buffer_24 )                 // unknownDword54
-	  {
-		LODWORD(a1->qword1F8) = *v15;
-	  }
-	  else
-	  {
-		LODWORD(a1->qword1F8) = 0;
-		LOBYTE(failFlag_32) = 1;
-		v16 = buffer_24;
-	  }
-	  v17 = v16 + 1;
-	  if ( (v16 + 1) <= buffer_24 )                 // unknownDword55
-	  {
-		HIDWORD(a1->qword1F8) = *v16;
-	  }
-	  else
-	  {
-		HIDWORD(a1->qword1F8) = 0;
-		LOBYTE(failFlag_32) = 1;
-		v17 = buffer_24;
-	  }
-	  v18 = (v17 + 1);
-	  if ( (v17 + 1) <= buffer_24 )                 // ignore dword (length of string)
-	  {
-		v19 = *v17;
-		buffer_16 = v17 + 1;
-		if ( v19 < 0 )
-		  goto LABEL_27;
-	  }
-	  else
-	  {
-		v19 = 0;
-		LOBYTE(failFlag_32) = 1;
-		v18 = buffer_24;
-		buffer_16 = buffer_24;
-	  }
-	  if ( v19 <= buffer_24 - buffer_16 )
-	  {
-		WriteStringToClassMember(&a1->qword208, v18, v19);// unknownString8
-		v20 = &v18[v19];
-		goto LABEL_28;
-	  }
-	LABEL_27:
-	  LOBYTE(failFlag_32) = 1;
-	  v20 = buffer_24;
-	LABEL_28:
-	  v21 = v20 + 1;
-	  if ( (v20 + 1) <= buffer_24 )                 // UI_MODEL_CAMERA_ID
-	  {
-		a1->baseitemdefinition0.UI_MODEL_CAMERA_ID = *v20;
-	  }
-	  else
-	  {
-		a1->baseitemdefinition0.UI_MODEL_CAMERA_ID = 0;
-		LOBYTE(failFlag_32) = 1;
-		v21 = buffer_24;
-	  }
-	  v22 = v21 + 1;
-	  if ( (v21 + 1) <= buffer_24 )                 // unknownDword57
-	  {
-		a1->field_200 = *v21;
-	  }
-	  else
-	  {
-		a1->field_200 = 0;
-		LOBYTE(failFlag_32) = 1;
-		v22 = buffer_24;
-	  }
-	  if ( (v22 + 1) <= buffer_24 )                 // SCRAP_VALUE_OVERRIDE
-	  {
-		a1->SCRAP_VALUE_OVERRIDE = *v22;
-		buffer_16 = v22 + 1;
-	  }
-	  else
-	  {
-		a1->SCRAP_VALUE_OVERRIDE = 0;
-		LOBYTE(failFlag_32) = 1;
-		buffer_16 = buffer_24;
-	  }
-	  ReadClientItemDefinitionsStatsFromBuffer(&bufferDecomp_, &a1->qword220);// read func
+
+	ReadStringFromBuffer_orig(buffer, &a1->qword208);// unknownString8
+
+
+	ReadValueFromBuffer(&a1->baseitemdefinition0.UI_MODEL_CAMERA_ID, buffer, sizeof(int)); // UI_MODEL_CAMERA_ID
+	ReadValueFromBuffer(&a1->field_200, buffer, sizeof(int)); // unknownDword57
+	ReadValueFromBuffer(&a1->SCRAP_VALUE_OVERRIDE, buffer, sizeof(int)); // SCRAP_VALUE_OVERRIDE
+
+	ClientItemDefinitionStatsread_orig(buffer, &a1->qword220);// read func
 	
-	
-	*/
 	buffer->failureFlag = 0;
-}
-
-static void(*ClientItemDefinitionStatsread_orig)(DataLoadByPacket* a1, void* a2);
-static void ClientItemDefinitionStatsread(DataLoadByPacket* a1, void* a2) {
-	printf("********ClientItemDefinitionStatsread\n\n");
-	a1->failureFlag = 0; // force failFlag to 0 for now
-	//ClientItemDefinitionStatsread_orig(a1, a2);
 }
 
 static char(*itemDefDecompress_orig)(void* a1, int a2, void* a3, int a4);
@@ -843,6 +711,9 @@ bool VCPatcher::Init()
 
 	MH_CreateHook((char*)0x1406F4540, ClientItemDefinitionStatsread, (void**)&ClientItemDefinitionStatsread_orig);//ClientItemDefinitionStats
 	
+	//MH_CreateHook((char*)0x1402BE6C0, WriteStringToClassMember, (void**)&WriteStringToClassMember_orig);// WriteStringToClassMember
+
+	MH_CreateHook((char*)0x140467F40, ReadStringFromBuffer, (void**)&ReadStringFromBuffer_orig);// ReadStringFromBuffer
 
 	// END OF LOADOUT HOOKS
 	

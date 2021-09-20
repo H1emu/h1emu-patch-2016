@@ -546,8 +546,10 @@ struct __declspec(align(8)) ClientItemDefinition
 	_QWORD PLAYER_STUDIO_DISPLAY_NAME;
 	_QWORD qword1E0;
 	_QWORD qword1E8;
-	_QWORD qword1F0;
-	_QWORD qword1F8;
+	int qword1F0;
+	int field_1F4;
+	int qword1F8;
+	int field_1FC;
 	int field_200;
 	int SCRAP_VALUE_OVERRIDE;
 	_QWORD qword208;

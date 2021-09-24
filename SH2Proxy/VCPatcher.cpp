@@ -286,10 +286,15 @@ static bool gameConsoleShowing = false;
 static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, int a3, int a4);
 static void executeLuaFuncStub(void* LuaVM, char* funcName, int a3, int a4) {
 	void* retAddr = _ReturnAddress();
-	if (retAddr != (void*)0x1403FD30D && retAddr != (void*)0x140BFEEA8 && retAddr != (void*)0x140CFBC62 && retAddr != (void*)0x14040DF7D){ // OnUpdate, GameEvents:GetInventoryShown, HudHandler:GetBattleRoyaleData
+	std::string func = funcName;
+	if (retAddr != (void*)0x1403FD30D && // OnUpdate
+		retAddr != (void*)0x140BFEEA8 && // GameEvents:GetInventoryShown
+		retAddr != (void*)0x140CFBC62 && // HudHandler:GetBattleRoyaleData
+		retAddr != (void*)0x14040DF7D && // TooltipMethods:HideFromCode
+		func != "BaseClient_Reticle_OnDataChanged") // BaseClient_Reticle_OnDataChanged
+	{ 
 		printf("executeLuaFuncStub: %s - Return Address: %p\n", funcName, retAddr);
 	}
-	std::string func = funcName;
 	if (func == "Console:StartDebugConsole") { // forces console to open when key pressed
 		executeLuaFunc_orig(LuaVM, "Console:Show", 0, 0);
 		gameConsoleShowing = !gameConsoleShowing;
@@ -321,24 +326,6 @@ static void loginReadFuncsStub(int a1, char* a2, int a3) {
 	}
 	loginReadFuncs_orig(a1, a2, a3);
 }
-/*
-static void(*ClientRunStateManager_orig)(BaseClient* a1);
-static void ClientRunStateManager(BaseClient* a1) {
-	
-	if (characterLoginReply) {
-		// manually set guid
-		// a1->guid = 722776196;
-
-		HideLoadingscreen_orig(a1, "Has Character List");
-		TransitionClientRunState_orig(a1, ClientRunStateNetInitialize);
-		characterLoginReply = false;
-	}
-	
-	DWORD state = a1->clientRunState;
-	// printf("********ClientRunStateManager state: %u \n\n\n\n", state); // prints clientrunstate
-	ClientRunStateManager_orig(a1);
-}
-*/
 
 void OnIntentionalCrash() {
 	printf("daybreak hates you\n");
@@ -379,10 +366,10 @@ static void containerErrorRead(void* a1, void* a2, void* a3) {
 	printf("********containerErrorRead\n\n");
 	containerErrorRead_orig(a1, a2, a3);
 }
-static void(*containerShowContainerRead_orig)(void* a1, void* a2, void* a3);
-static void containerShowContainerRead(void* a1, void* a2, void* a3) {
-	printf("********containerShowContainerRead\n\n");
-	containerShowContainerRead_orig(a1, a2, a3);
+static void(*containerAddContainerRead_orig)(void* a1, void* a2, void* a3);
+static void containerAddContainerRead(void* a1, void* a2, void* a3) {
+	printf("********containerAddContainerRead\n\n");
+	containerAddContainerRead_orig(a1, a2, a3);
 }
 
 // equipment
@@ -431,74 +418,8 @@ static void loadoutSelectSlotRead(void* a1, void* a2, void* a3) {
 
 // item def
 
-static void(*itemDefinitionFailed_orig)(void* a1, __int64* a2);
-static void itemDefinitionFailed(void* a1, __int64* a2) {
-	printf("********itemDefinitionFailed\n\n");
-	int val = *(a2 + 8);
-	printf("unknownDword1: %d\n", val);
-	itemDefinitionFailed_orig(a1, a2);
-}
-
-/*
-static void(*itemDefRead_orig)(void* a1, DataLoadByPacket* a2);
-static void itemDefRead(void* a1, DataLoadByPacket* a2) {
-	printf("********itemDefRead\n\n");
-	printf("Calling hexDump\n");
-	hexDump("data dump for netDataBuf:", a2->pBuffer, a2->bufferSize);
-	itemDefRead_orig(a1, a2);
-}
-*/
-
-static void(*sub_1406F3340Read_orig)(void* a1, DataLoadByPacket* buffer);
-static void sub_1406F3340Read(void* a1, DataLoadByPacket* buffer) {
-	printf("********sub_1406F3340Read\n\n");
-	buffer->failureFlag = 0; // force failFlag to 0 for now
-	sub_1406F3340Read_orig(a1, buffer);
-}
-
-/*
-static void(*WriteStringToClassMember_orig)(__int64 *classMemberVar, char *data, int length);
-static void WriteStringToClassMember(__int64 *classMemberVar, char *data, int length) {
-	printf("********WriteStringToClassMember\n\n");
-	WriteStringToClassMember_orig(classMemberVar, data, length);
-}
-
-void __fastcall ReadStringFromBuffer(DataLoadByPacket* buffer, __int64* destination)
-{
-	char* pBuffer; // r8
-	char* pBufferEnd; // rcx
-	int stringSize; // edi
-
-	pBuffer = buffer->pBuffer;
-	pBufferEnd = buffer->pBufferEnd;
-	if (pBuffer + 4 <= pBufferEnd)
-	{
-		stringSize = *pBuffer;
-		buffer->pBuffer = pBuffer + 4;
-		if (stringSize < 0)
-			buffer->failureFlag = 1;
-			buffer->pBuffer = pBufferEnd;
-			return;
-	}
-	else
-	{
-		stringSize = 0;
-		buffer->failureFlag = 1;
-		buffer->pBuffer = pBufferEnd;
-	}
-	if (stringSize <= pBufferEnd - buffer->pBuffer)
-	{
-
-		WriteStringToClassMember(destination, buffer->pBuffer, stringSize);
-		buffer->pBuffer += stringSize;
-		return;
-	}
-}
-*/
-
 static void(*ReadStringFromBuffer_orig)(DataLoadByPacket* buffer, __int64* destination);
 static void ReadStringFromBuffer(DataLoadByPacket* buffer, __int64* destination) {
-	printf("********ReadStringFromBuffer\n\n");
 	ReadStringFromBuffer_orig(buffer, destination);
 }
 
@@ -510,7 +431,6 @@ static void ReadValueFromBuffer(void* destination, DataLoadByPacket* buffer, siz
 	}
 	else
 	{
-		//memcpy(destination, nullptr, sizeof(char));
 		buffer->pBuffer = buffer->pBufferEnd;
 		buffer->failureFlag = 1;
 	}
@@ -519,7 +439,6 @@ static void ReadValueFromBuffer(void* destination, DataLoadByPacket* buffer, siz
 static void(*ClientItemDefinitionStatsread_orig)(DataLoadByPacket* a1, void* a2);
 static void ClientItemDefinitionStatsread(DataLoadByPacket* a1, void* a2) {
 	printf("********ClientItemDefinitionStatsread\n\n");
-	//a1->failureFlag = 0; // force failFlag to 0 for now
 	ClientItemDefinitionStatsread_orig(a1, a2);
 }
 
@@ -532,22 +451,10 @@ static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPac
 	// packet reading
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.dword8, buffer, sizeof(int));
-	printf("ID: %d ", a1->baseitemdefinition0.dword8);
-
-	_BYTE* v5 = a1->baseitemdefinition0.bitflags;
-	__int64 v6 = 2i64;
-	do
-	{
-		ReadValueFromBuffer(&v5, buffer, sizeof(char));
-		++v5; --v6;
-	} while (v6);
-	printf("flags: %d, %d ", a1->baseitemdefinition0.bitflags[0], a1->baseitemdefinition0.bitflags[1]);
-
+	ReadValueFromBuffer(&a1->baseitemdefinition0.bitflags[0], buffer, sizeof(char));
+	ReadValueFromBuffer(&a1->baseitemdefinition0.bitflags[1], buffer, sizeof(char));
 	ReadValueFromBuffer(&a1->baseitemdefinition0.NAME_ID, buffer, sizeof(int));
-	printf("NAME_ID: %d ", a1->baseitemdefinition0.NAME_ID);
-
 	ReadValueFromBuffer(&a1->baseitemdefinition0.DESCRIPTION_ID, buffer, sizeof(int));
-	printf("DESCRIPTION_ID: %d ", a1->baseitemdefinition0.DESCRIPTION_ID);
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.CONTENT_ID, buffer, sizeof(int));
 	ReadValueFromBuffer(&a1->baseitemdefinition0.IMAGE_SET_ID, buffer, sizeof(int));
@@ -655,16 +562,8 @@ static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPac
 
 	ClientItemDefinitionStatsread_orig(buffer, &a1->qword220);// read func
 	
+	printf("ItemDefinition recieved - ID: %d - Flags: %d, %d\n", a1->baseitemdefinition0.dword8, a1->baseitemdefinition0.bitflags[0], a1->baseitemdefinition0.bitflags[1]);
 	buffer->failureFlag = 0;
-}
-
-static char(*itemDefDecompress_orig)(void* a1, int a2, void* a3, int a4);
-static char itemDefDecompress(void* a1, int a2, void* a3, int a4) {
-	char ret = itemDefDecompress_orig(a1, a2, a3, a4);
-	printf("********itemDefDecompress %d %d\n\n", a2, a4);
-	printf("ret: %d\n", ret);
-	//itemDefDecompress_orig(a1, a2, a3, a4);
-	return 1;
 }
 
 static char(*networkProximityUpdatesComplete_orig)(void* a1, void* a2, void* a3, void* a4);
@@ -673,6 +572,33 @@ static char networkProximityUpdatesComplete(void* a1, void* a2, void* a3, void* 
 	printf("********networkProximityUpdatesComplete\n\n");
 	printf("ret: %d\n", ret);
 	return 1;
+}
+
+static void (*ItemAddBytesWithLengthRead_orig)(void* a1, void* a2);
+static void ItemAddBytesWithLengthRead(void* a1, void* a2) {
+	printf("********ItemAddBytesWithLengthRead\n\n");
+	ItemAddBytesWithLengthRead_orig(a1, a2);
+}
+
+static void (*HandleItemAddData_orig)(void* a1, void* a2, void* a3);
+static void HandleItemAddData(void* a1, void* a2, void* a3) {
+	printf("********HandleItemAddData\n\n");
+	HandleItemAddData_orig(a1, a2, a3);
+}
+
+static void*(*ClientPlayerItemManager__CreateItem_orig)(void* a1, void* a2);
+static void* ClientPlayerItemManager__CreateItem(void* a1, void* a2) {
+	void* ret = ClientPlayerItemManager__CreateItem_orig(a1, a2);
+	printf("********ClientPlayerItemManager__CreateItem\n\n");
+	return ret;
+}
+
+
+
+static void (*ReadItemDataFromBuffer_orig)(void* a1, void* a2);
+static void ReadItemDataFromBuffer(void* a1, void* a2) {
+	printf("********ReadItemDataFromBuffer\n\n");
+	ReadItemDataFromBuffer_orig(a1, a2);
 }
 
 bool VCPatcher::Init()
@@ -692,6 +618,20 @@ bool VCPatcher::Init()
 
 	// ###################################################     Game hooks     ############################################################
 
+	// INVENTORY HOOKS:
+
+	MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
+
+	MH_CreateHook((char*)0x140630DA0, HandleItemAddData, (void**)&HandleItemAddData_orig);
+
+	MH_CreateHook((char*)0x14049DBD0, ClientPlayerItemManager__CreateItem, (void**)&ClientPlayerItemManager__CreateItem_orig);
+	
+	MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
+	
+
+
+
+
 	// LOADOUT HOOKS:
 
 	MH_CreateHook((char*)0x1405C9770, loadoutBaseRead, (void**)&loadoutBaseRead_orig);
@@ -699,37 +639,30 @@ bool VCPatcher::Init()
 	MH_CreateHook((char*)0x1405C9BF0, loadoutSetCurrentLoadoutRead, (void**)&loadoutSetCurrentLoadoutRead_orig);
 	MH_CreateHook((char*)0x1405C9E80, loadoutSelectSlotRead, (void**)&loadoutSelectSlotRead_orig);
 
-	// itemDefinition failflag check
-	
-	//MH_CreateHook((char*)0x140911100, itemDefinitionFailed, (void**)&itemDefinitionFailed_orig);
+	// ITEMDEFINITION HOOKS:
 
 	MH_CreateHook((char*)0x1406F3DA0, ItemDefinitionReadFromBuffer, (void**)&ItemDefinitionReadFromBuffer_orig);
 
-	MH_CreateHook((char*)0x1406F3340, sub_1406F3340Read, (void**)&sub_1406F3340Read_orig);
-
-	MH_CreateHook((char*)0x141640430, itemDefDecompress, (void**)&itemDefDecompress_orig); // decompression func
-
 	MH_CreateHook((char*)0x1406F4540, ClientItemDefinitionStatsread, (void**)&ClientItemDefinitionStatsread_orig);//ClientItemDefinitionStats
-	
-	//MH_CreateHook((char*)0x1402BE6C0, WriteStringToClassMember, (void**)&WriteStringToClassMember_orig);// WriteStringToClassMember
 
 	MH_CreateHook((char*)0x140467F40, ReadStringFromBuffer, (void**)&ReadStringFromBuffer_orig);// ReadStringFromBuffer
-
-	// END OF LOADOUT HOOKS
 	
+	// CONTAINER HOOKS:
+
 	MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
 	MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
-	MH_CreateHook((char*)0x1405FF600, containerShowContainerRead, (void**)&containerShowContainerRead_orig);
+	MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
 
-	// equipment
+	// EQUIPMENT HOOKS:
 
 	MH_CreateHook((char*)0x1405819A0, equipmentEventBase, (void**)&equipmentEventBase_orig);
 
 	MH_CreateHook((char*)0x140582110, setCharacterEquipmentSlot, (void**)&setCharacterEquipmentSlot_orig);
 
-	// end of equipment
+	// login read funcs test
+	MH_CreateHook((char*)0x14163EFA0, loginReadFuncsStub, (void**)&loginReadFuncs_orig);
 
-	//MH_CreateHook((char*)0x1403FA350, ClientRunStateManager, (void**)&ClientRunStateManager_orig);
+	//Other
 
 	MH_CreateHook((char*)0x1403FD710, SpawnLightweightPc, (void**)&SpawnLightweightPc_orig);
 
@@ -737,12 +670,8 @@ bool VCPatcher::Init()
 
 	MH_CreateHook((char*)0x140474DE0, TransitionClientRunState, (void**)&TransitionClientRunState_orig);
 
-	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig); //(2016)
+	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
 
-	// login read funcs test
-	MH_CreateHook((char*)0x14163EFA0, loginReadFuncsStub, (void**)&loginReadFuncs_orig);
-
-	//Other
 	MH_CreateHook((char*)0x140737C00, OnReceiveServer, (void**)&g_origOnReceiveServer);
 
 	MH_CreateHook((char*)0x1403FE210, handleIncomingZonePackets, (void**)&handleIncomingZonePackets_orig);

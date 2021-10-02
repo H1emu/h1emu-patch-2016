@@ -11,6 +11,8 @@
 #include "../H1Z1/H1Z1.exe.h"
 #include "../H1Z1/enums.h"
 
+//#define CONSOLE_ENABLED
+
 using namespace std;
 
 static bool consoleShowing = false;
@@ -246,10 +248,8 @@ bool File__Open(void* a1, char* filename, int a3, int a4) {
 	return open;
 }
 
-BaseClient* g_BaseClient;
 static void(*handleIncomingZonePackets_orig)(BaseClient* thisPtr, IncomingPacket* packet, char* data, int dataLen, float time, int a6);
 static void handleIncomingZonePackets(BaseClient* thisPtr, IncomingPacket* packet, char* data, int dataLen, float time, int a6) {
-	g_BaseClient = thisPtr;
 	if (packet->packetType != 60) {
 		printf("\n\n\n\n\n\n\n\n\n\n");
 		printf("packetType: %d - Return Address: %p\n", packet->packetType, _ReturnAddress());
@@ -262,24 +262,6 @@ static void handleIncomingZonePackets(BaseClient* thisPtr, IncomingPacket* packe
 		printf("\n\n\n\n\n\n\n\n\n\n");
 	}
 	handleIncomingZonePackets_orig(thisPtr, packet, data, dataLen, time, a6);
-}
-
-static bool(*g_origOnReceiveServer)(void* a1, void* a2, void* a3);
-static bool OnReceiveServer(void* a1, void* a2, void* a3)
-{
-	return g_origOnReceiveServer(a1, a2, a3);
-}
-
-static void(*handleIncomingLoginPackets_orig)(void* a1, void* a2, unsigned int a3);
-static void handleIncomingLoginPackets(void* a1, void* a2, unsigned int a3) {
-	printf("handleIncomingLoginPackets: Return Address: %p\n", _ReturnAddress());
-	handleIncomingLoginPackets_orig(a1, a2, a3);
-}
-
-static void(*onLoginCompleteStub_orig)(void* thisPtr);
-static void onLoginCompleteStub(void* thisPtr) {
-	printf("onLoginCompleteStub: Return Address: %p\n", _ReturnAddress());
-	onLoginCompleteStub_orig(thisPtr);
 }
 
 static bool gameConsoleShowing = false;
@@ -307,24 +289,6 @@ static void executeLuaFuncStub(void* LuaVM, char* funcName, int a3, int a4) {
 	else { // all other lua funcs
 		executeLuaFunc_orig(LuaVM, funcName, a3, a4);
 	}
-}
-
-static void(*TransitionClientRunState_orig)(BaseClient* a1, int state);
-static void TransitionClientRunState(BaseClient* a1, int state) {
-
-	printf("********TransitionClientRunState state: %u \n\n\n\n", state); // prints clientrunstate
-	TransitionClientRunState_orig(a1, state);
-}
-
-bool characterLoginReply = false;
-static void(*loginReadFuncs_orig)(int a1, char* a2, int a3);
-static void loginReadFuncsStub(int a1, char* a2, int a3) {
-	int opcode = *a2;
-	printf("********loginReadFuncs called: %i \n\n\n\n", opcode);
-	if (opcode == 8) {
-		characterLoginReply = true;
-	}
-	loginReadFuncs_orig(a1, a2, a3);
 }
 
 void OnIntentionalCrash() {
@@ -470,7 +434,7 @@ static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPac
 	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.TEXTURE_ALIAS);// TEXTURE_ALIAS
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.GENDER_USAGE, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.dwordAC, buffer, sizeof(int)); // unknownDword14
+	ReadValueFromBuffer(&a1->baseitemdefinition0.ITEM_TYPE, buffer, sizeof(int)); // unknownDword14
 	ReadValueFromBuffer(&a1->baseitemdefinition0.CATEGORY_ID, buffer, sizeof(int));
 	ReadValueFromBuffer(&a1->baseitemdefinition0.WEAPON_TRAIL_EFFECT_ID, buffer, sizeof(int));
 	ReadValueFromBuffer(&a1->baseitemdefinition0.COMPOSITE_EFFECT_ID, buffer, sizeof(int));
@@ -494,7 +458,7 @@ static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPac
 	ReadValueFromBuffer(&a1->baseitemdefinition0.EQUIP_COUNT_MAX, buffer, sizeof(int));
 	ReadValueFromBuffer(&a1->baseitemdefinition0.CURRENCY_TYPE, buffer, sizeof(int));
 	ReadValueFromBuffer(&a1->baseitemdefinition0.DATASHEET_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.ITEM_TYPE, buffer, sizeof(int));
+	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword14, buffer, sizeof(int));
 	ReadValueFromBuffer(&a1->baseitemdefinition0.SKILL_SET_ID, buffer, sizeof(int));
 
 	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.OVERLAY_TEXTURE);// OVERLAY_TEXTURE
@@ -618,6 +582,17 @@ bool VCPatcher::Init()
 
 	// ###################################################     Game hooks     ############################################################
 
+	// ####################     Release hooks     ####################
+	// ITEMDEFINITION HOOKS:
+	MH_CreateHook((char*)0x1406F3DA0, ItemDefinitionReadFromBuffer, (void**)&ItemDefinitionReadFromBuffer_orig);
+	MH_CreateHook((char*)0x1406F4540, ClientItemDefinitionStatsread, (void**)&ClientItemDefinitionStatsread_orig);//ClientItemDefinitionStats
+	MH_CreateHook((char*)0x140467F40, ReadStringFromBuffer, (void**)&ReadStringFromBuffer_orig);// ReadStringFromBuffer
+
+	// LUA:
+	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
+
+	// ####################     Debug hooks     ####################
+	#ifdef CONSOLE_ENABLED
 	// INVENTORY HOOKS:
 
 	MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
@@ -628,24 +603,12 @@ bool VCPatcher::Init()
 	
 	MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
 	
-
-
-
-
 	// LOADOUT HOOKS:
 
 	MH_CreateHook((char*)0x1405C9770, loadoutBaseRead, (void**)&loadoutBaseRead_orig);
 	MH_CreateHook((char*)0x1405C9970, loadoutSelectLoadoutRead, (void**)&loadoutSelectLoadoutRead_orig);
 	MH_CreateHook((char*)0x1405C9BF0, loadoutSetCurrentLoadoutRead, (void**)&loadoutSetCurrentLoadoutRead_orig);
 	MH_CreateHook((char*)0x1405C9E80, loadoutSelectSlotRead, (void**)&loadoutSelectSlotRead_orig);
-
-	// ITEMDEFINITION HOOKS:
-
-	MH_CreateHook((char*)0x1406F3DA0, ItemDefinitionReadFromBuffer, (void**)&ItemDefinitionReadFromBuffer_orig);
-
-	MH_CreateHook((char*)0x1406F4540, ClientItemDefinitionStatsread, (void**)&ClientItemDefinitionStatsread_orig);//ClientItemDefinitionStats
-
-	MH_CreateHook((char*)0x140467F40, ReadStringFromBuffer, (void**)&ReadStringFromBuffer_orig);// ReadStringFromBuffer
 	
 	// CONTAINER HOOKS:
 
@@ -656,35 +619,22 @@ bool VCPatcher::Init()
 	// EQUIPMENT HOOKS:
 
 	MH_CreateHook((char*)0x1405819A0, equipmentEventBase, (void**)&equipmentEventBase_orig);
-
 	MH_CreateHook((char*)0x140582110, setCharacterEquipmentSlot, (void**)&setCharacterEquipmentSlot_orig);
-
-	// login read funcs test
-	MH_CreateHook((char*)0x14163EFA0, loginReadFuncsStub, (void**)&loginReadFuncs_orig);
-
+	
 	//Other
 
 	MH_CreateHook((char*)0x1403FD710, SpawnLightweightPc, (void**)&SpawnLightweightPc_orig);
-
+	
 	MH_CreateHook((char*)0x14039E0A0, sub_14039E0A0, (void**)&sub_14039E0A0_orig); // sanity check (Pc / Npc / Vehicle)
-
-	MH_CreateHook((char*)0x140474DE0, TransitionClientRunState, (void**)&TransitionClientRunState_orig);
-
+	
 	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
-
-	MH_CreateHook((char*)0x140737C00, OnReceiveServer, (void**)&g_origOnReceiveServer);
-
+	
 	MH_CreateHook((char*)0x1403FE210, handleIncomingZonePackets, (void**)&handleIncomingZonePackets_orig);
-
-	MH_CreateHook((char*)0x14163EA20, handleIncomingLoginPackets, (void**)&handleIncomingLoginPackets_orig);
-
-	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
-
-	MH_CreateHook((char*)0x1403D64A0, onLoginCompleteStub, (void**)&onLoginCompleteStub_orig);
-
+	
 	//Logging
 	MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); //hook absolutely every logging function
-
+	#endif
+	
 	// ###################################################     End of game hooks     ############################################################
 
 	MH_EnableHook(MH_ALL_HOOKS);

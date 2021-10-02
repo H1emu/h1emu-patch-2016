@@ -469,7 +469,7 @@ struct __declspec(align(2)) BaseItemDefinition
 	int qwordA0;
 	int field_A4;
 	_DWORD GENDER_USAGE;
-	_DWORD dwordAC;
+	_DWORD ITEM_TYPE;
 	int CATEGORY_ID;
 	int WEAPON_TRAIL_EFFECT_ID;
 	int COMPOSITE_EFFECT_ID;
@@ -490,7 +490,7 @@ struct __declspec(align(2)) BaseItemDefinition
 	int EQUIP_COUNT_MAX;
 	int CURRENCY_TYPE;
 	_DWORD DATASHEET_ID;
-	_DWORD ITEM_TYPE;
+	_DWORD unknownDword14;
 	_DWORD SKILL_SET_ID;
 	__int64 OVERLAY_TEXTURE;
 	int qword110;

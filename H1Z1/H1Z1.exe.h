@@ -563,3 +563,93 @@ struct __declspec(align(8)) ClientItemDefinition
 	_DWORD dword240;
 	_QWORD qword248;
 };
+
+struct SoeUtil__IString_t_char_t__vtbl;
+struct Vtable_1421027B0;
+struct Vtable_142065A78;
+struct Vtable_qword_142102788;
+
+/* 547 */
+struct __declspec(align(8)) constructionRelated__
+{
+	Vtable_1421027B0* __vftable;
+	Vtable_142065A78* __vftable_8;
+	__int64 field_10;
+	__int64 field_18;
+	int field_20;
+	_BYTE gap_24[4];
+	__int64 field_28;
+	int field_30;
+	_BYTE gap_34[12];
+	__int64 field_40;
+	_BYTE gap_48[8];
+	__int64 field_50;
+	_BYTE gap_58[8];
+	__int64 field_60;
+	_BYTE gap_68[8];
+	__int64 field_70;
+	_BYTE gap_78[8];
+	__int64 field_80;
+	__int64 field_88;
+	__int64 field_90;
+	__int64 field_98;
+	__int64 field_A0;
+	__int64 field_A8;
+	__int64 field_B0;
+	__int64 field_B8;
+	int field_C0;
+	__int64 field_C4;
+	char flagShouldBeTrue1;
+	_BYTE gap_CD[3];
+	__int64 field_D0;
+	__int64 field_D8;
+	SoeUtil__IString_t_char_t__vtbl* __vftable_E0;
+	char* field_E8;
+	__int64 field_F0;
+	int field_F8;
+	_BYTE gap_FC[4];
+	__int64 field_100;
+	_BYTE gap_108[8];
+	__int64 field_110;
+	_BYTE gap_120[48];
+	SoeUtil__IString_t_char_t__vtbl* __vftable_150;
+	char* field_158;
+	__int64 field_160;
+	_BYTE field_164;
+	_BYTE flagShouldBeFalse2;
+	_BYTE gap_16A[6];
+	Vtable_qword_142102788* __vftable_170;
+	__int64 field_178;
+	__int64 field_180;
+	Vtable_qword_142102788* __vftable_188;
+	__int64 field_190;
+	__int64 field_198;
+	__int64 field_1A0;
+	__int64 field_1A8;
+	_QWORD field_1B0;
+};
+
+/* 544 */
+struct Vtable_1421027B0
+{
+	_QWORD* (__fastcall* sub_14076FDF0)(_QWORD* a1, __int64 a2);
+};
+
+/* 545 */
+struct Vtable_142065A78
+{
+	_QWORD* (__fastcall* sub_1403BE470)(_QWORD* a1, char a2);
+};
+
+/* 542 */
+struct /*VFT*/ SoeUtil__IString_t_char_t__vtbl
+{
+	__int64(__fastcall* sub_1402EFA00)(__int64 a1, char a2);
+};
+
+/* 546 */
+struct Vtable_qword_142102788
+{
+	__int64(__fastcall* sub_14076FBB0)(__int64 a1, __int64 a2);
+	__int64* (__fastcall* sub_140770040)(__int64 a1, int a2, int* a3, char a4);
+};

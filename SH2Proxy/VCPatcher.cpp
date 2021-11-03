@@ -11,7 +11,7 @@
 #include "../H1Z1/H1Z1.exe.h"
 #include "../H1Z1/enums.h"
 
-//#define CONSOLE_ENABLED
+#define CONSOLE_ENABLED
 
 using namespace std;
 
@@ -269,26 +269,30 @@ static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, int a3, int a4);
 static void executeLuaFuncStub(void* LuaVM, char* funcName, int a3, int a4) {
 	void* retAddr = _ReturnAddress();
 	std::string func = funcName;
-	if (retAddr != (void*)0x1403FD30D && // OnUpdate
-		retAddr != (void*)0x140BFEEA8 && // GameEvents:GetInventoryShown
-		retAddr != (void*)0x140CFBC62 && // HudHandler:GetBattleRoyaleData
-		retAddr != (void*)0x14040DF7D && // TooltipMethods:HideFromCode
-		func != "BaseClient_Reticle_OnDataChanged") // BaseClient_Reticle_OnDataChanged
-	{ 
-		printf("executeLuaFuncStub: %s - Return Address: %p\n", funcName, retAddr);
+	switch ((unsigned long long)retAddr) {
+		case 0x1403FD30D: // OnUpdate
+		case 0x140BFEEA8: // GameEvents:GetInventoryShown
+		case 0x140CFBC62: // HudHandler:GetBattleRoyaleData
+		case 0x14040DF7D: // TooltipMethods:HideFromCode
+			break;
+		default:
+			if (func != "BaseClient_Reticle_OnDataChanged") {
+				printf("executeLuaFuncStub: %s - Return Address: %p\n", funcName, retAddr);
+				if (func == "Console:StartDebugConsole") { // forces console to open when key pressed
+					executeLuaFunc_orig(LuaVM, "Console:Show", 0, 0);
+					gameConsoleShowing = !gameConsoleShowing;
+					return;
+				}
+				else if ((func == "GameEvents:OnEscape" || func == "Console:OnSwfFocus") && gameConsoleShowing) { // closes console on ~ or escape
+					executeLuaFunc_orig(LuaVM, "Console:Hide", 0, 0);
+					executeLuaFunc_orig(LuaVM, funcName, a3, a4); // executes normal GameEvents:OnEscape / "Console:OnSwfFocus"
+					gameConsoleShowing = !gameConsoleShowing;
+					return;
+				}
+			}
+			break;
 	}
-	if (func == "Console:StartDebugConsole") { // forces console to open when key pressed
-		executeLuaFunc_orig(LuaVM, "Console:Show", 0, 0);
-		gameConsoleShowing = !gameConsoleShowing;
-	}
-	else if ((func == "GameEvents:OnEscape" || func == "Console:OnSwfFocus") && gameConsoleShowing) { // closes console on ~ or escape
-		executeLuaFunc_orig(LuaVM, "Console:Hide", 0, 0);
-		executeLuaFunc_orig(LuaVM, funcName, a3, a4); // executes normal GameEvents:OnEscape / "Console:OnSwfFocus"
-		gameConsoleShowing = !gameConsoleShowing;
-	}
-	else { // all other lua funcs
-		executeLuaFunc_orig(LuaVM, funcName, a3, a4);
-	}
+	executeLuaFunc_orig(LuaVM, funcName, a3, a4);
 }
 
 void OnIntentionalCrash() {
@@ -409,9 +413,6 @@ static void ClientItemDefinitionStatsread(DataLoadByPacket* a1, void* a2) {
 static void(*ItemDefinitionReadFromBuffer_orig)(ClientItemDefinition* a1, DataLoadByPacket* buffer);
 static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPacket* buffer) {
 	printf("********ItemDefinitionReadFromBuffer\n\n");
-	printf("Calling hexDump ItemDefinitionReadFromBuffer\n");
-	hexDump("data dump for netDataBuf:", buffer->pBuffer, buffer->bufferSize);
-
 	// packet reading
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.dword8, buffer, sizeof(int));
@@ -565,9 +566,46 @@ static void ReadItemDataFromBuffer(void* a1, void* a2) {
 	ReadItemDataFromBuffer_orig(a1, a2);
 }
 
+static void (*ConstructionPlacementFinalizePacket_orig)(constructionRelated__* a1);
+static void ConstructionPlacementFinalizePacket(constructionRelated__ *a1) {
+	printf("********ConstructionPlacementFinalizePacket\n\n");
+
+	*(bool*)(a1 + 0xCC) = 1;
+	*(bool*)(a1 + 0x169) = 0;
+	ConstructionPlacementFinalizePacket_orig(a1);
+}
+
+static void (*BeginCharacterAccessRead_orig)(void* a1, void* a2);
+static void BeginCharacterAccessRead(void* a1, void* a2) {
+	printf("********BeginCharacterAccessRead\n\n");
+
+	BeginCharacterAccessRead_orig(a1, a2);
+}
+
+static void (*ItemsReadFunc_orig)(void* a1, void* a2);
+static void ItemsReadFunc(void* a1, void* a2) {
+	printf("********ItemsReadFunc\n\n");
+
+	ItemsReadFunc_orig(a1, a2);
+}
+
+static void (*sub_140BAA8C0_orig)(void* a1, void* a2);
+static void sub_140BAA8C0(void* a1, void* a2) {
+	printf("********sub_140BAA8C0\n\n");
+
+	sub_140BAA8C0_orig(a1, a2);
+}
+
 bool VCPatcher::Init()
 {
 	// #########################################################     Game patches     ########################################################
+
+	/*
+	memset((BYTE*)0x142102045, 1, 1);
+	memset((BYTE*)0x142102046, 1, 1);
+	memset((BYTE*)0x142102047, 1, 1);
+	*/
+
 	// blocks 0xBADBEEF
 	hook::jump(0x14032DC60, OnIntentionalCrash); //Should have crashed, but continue executing... (sendself, lightweightToFullPc triggers this)
 
@@ -593,15 +631,28 @@ bool VCPatcher::Init()
 
 	// ####################     Debug hooks     ####################
 	#ifdef CONSOLE_ENABLED
+
+	// ACCESSEDCHARACTERBASE HOOKS
+
+	//MH_CreateHook((char*)0x140602BE0, BeginCharacterAccessRead, (void**)&BeginCharacterAccessRead_orig);
+
+	//MH_CreateHook((char*)0x140374DF0, ItemsReadFunc, (void**)&ItemsReadFunc_orig);
+
+	//MH_CreateHook((char*)0x140BAA8C0, sub_140BAA8C0, (void**)&sub_140BAA8C0_orig);
+
+	// CONSTRUCTION HOOKS:
+
+	MH_CreateHook((char*)0x140773B60, ConstructionPlacementFinalizePacket, (void**)&ConstructionPlacementFinalizePacket_orig);
+
 	// INVENTORY HOOKS:
 
-	MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
+	//MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
 
-	MH_CreateHook((char*)0x140630DA0, HandleItemAddData, (void**)&HandleItemAddData_orig);
+	//MH_CreateHook((char*)0x140630DA0, HandleItemAddData, (void**)&HandleItemAddData_orig);
 
-	MH_CreateHook((char*)0x14049DBD0, ClientPlayerItemManager__CreateItem, (void**)&ClientPlayerItemManager__CreateItem_orig);
+	//MH_CreateHook((char*)0x14049DBD0, ClientPlayerItemManager__CreateItem, (void**)&ClientPlayerItemManager__CreateItem_orig);
 	
-	MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
+	//MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
 	
 	// LOADOUT HOOKS:
 
@@ -612,9 +663,9 @@ bool VCPatcher::Init()
 	
 	// CONTAINER HOOKS:
 
-	MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
-	MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
-	MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
+	//MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
+	//MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
+	//MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
 
 	// EQUIPMENT HOOKS:
 

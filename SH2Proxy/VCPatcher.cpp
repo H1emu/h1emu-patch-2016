@@ -16,7 +16,6 @@
 using namespace std;
 
 static bool consoleShowing = false;
-//#pragma comment(lib, "ws2_32.lib")
 
 void hexDump(const char* desc, const void* addr, const int len);
 
@@ -89,6 +88,9 @@ static void tryAllocConsole() {
 }
 
 static void doSomeLogging(const char* fmt, va_list args) {
+	#ifndef CONSOLE_ENABLED
+		return;
+	#endif
 	tryAllocConsole();
 
 	FILE* logFile = _wfopen(L"GameMessages.log", L"a");
@@ -600,12 +602,6 @@ bool VCPatcher::Init()
 {
 	// #########################################################     Game patches     ########################################################
 
-	/*
-	memset((BYTE*)0x142102045, 1, 1);
-	memset((BYTE*)0x142102046, 1, 1);
-	memset((BYTE*)0x142102047, 1, 1);
-	*/
-
 	// blocks 0xBADBEEF
 	hook::jump(0x14032DC60, OnIntentionalCrash); //Should have crashed, but continue executing... (sendself, lightweightToFullPc triggers this)
 
@@ -634,11 +630,11 @@ bool VCPatcher::Init()
 
 	// ACCESSEDCHARACTERBASE HOOKS
 
-	//MH_CreateHook((char*)0x140602BE0, BeginCharacterAccessRead, (void**)&BeginCharacterAccessRead_orig);
+	MH_CreateHook((char*)0x140602BE0, BeginCharacterAccessRead, (void**)&BeginCharacterAccessRead_orig);
 
-	//MH_CreateHook((char*)0x140374DF0, ItemsReadFunc, (void**)&ItemsReadFunc_orig);
+	MH_CreateHook((char*)0x140374DF0, ItemsReadFunc, (void**)&ItemsReadFunc_orig);
 
-	//MH_CreateHook((char*)0x140BAA8C0, sub_140BAA8C0, (void**)&sub_140BAA8C0_orig);
+	MH_CreateHook((char*)0x140BAA8C0, sub_140BAA8C0, (void**)&sub_140BAA8C0_orig);
 
 	// CONSTRUCTION HOOKS:
 
@@ -646,13 +642,13 @@ bool VCPatcher::Init()
 
 	// INVENTORY HOOKS:
 
-	//MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
+	MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
 
-	//MH_CreateHook((char*)0x140630DA0, HandleItemAddData, (void**)&HandleItemAddData_orig);
+	MH_CreateHook((char*)0x140630DA0, HandleItemAddData, (void**)&HandleItemAddData_orig);
 
-	//MH_CreateHook((char*)0x14049DBD0, ClientPlayerItemManager__CreateItem, (void**)&ClientPlayerItemManager__CreateItem_orig);
+	MH_CreateHook((char*)0x14049DBD0, ClientPlayerItemManager__CreateItem, (void**)&ClientPlayerItemManager__CreateItem_orig);
 	
-	//MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
+	MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
 	
 	// LOADOUT HOOKS:
 
@@ -663,9 +659,9 @@ bool VCPatcher::Init()
 	
 	// CONTAINER HOOKS:
 
-	//MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
-	//MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
-	//MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
+	MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
+	MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
+	MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
 
 	// EQUIPMENT HOOKS:
 
@@ -694,6 +690,9 @@ bool VCPatcher::Init()
 }
 
 void hexDump(const char* desc, const void* addr, const int len) {
+	#ifndef CONSOLE_ENABLED
+	return;
+	#endif
 	int i;
 	unsigned char buff[17];
 	const unsigned char* pc = (const unsigned char*)addr;

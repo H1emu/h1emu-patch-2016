@@ -229,8 +229,6 @@ intptr_t WaitForWorldReady(char* a1) {
 
 static intptr_t(*g_origWaitForWorldReadyProcess)(char* a1);
 intptr_t WaitForWorldReadyProcess(char* a1) {
-	//*(char*)(a1 + 0x31500 + 0x1C) = true; //BaseClient->gap31500[0x1C]
-	//*(char*)(a1 + 0x31500 + 0x1D) = true; //BaseClient->gap31500[0x1D]
 	intptr_t returnVal = 0;
 	__try
 	{
@@ -252,16 +250,13 @@ bool File__Open(void* a1, char* filename, int a3, int a4) {
 
 static void(*handleIncomingZonePackets_orig)(BaseClient* thisPtr, IncomingPacket* packet, char* data, int dataLen, float time, int a6);
 static void handleIncomingZonePackets(BaseClient* thisPtr, IncomingPacket* packet, char* data, int dataLen, float time, int a6) {
-	if (packet->packetType != 60) {
-		printf("\n\n\n\n\n\n\n\n\n\n");
-		printf("packetType: %d - Return Address: %p\n", packet->packetType, _ReturnAddress());
-		if (packet->packetType == 22 || packet->packetType == 3) { //SendZoneDetails, sendself only
-			printf("Calling hexDump\n");
-			hexDump("data dump for netDataBuf:", data, dataLen);
-			printf("\n\n");
-			hexDump("data dump for ndbAtLen:", &data[dataLen], dataLen);
-		}
-		printf("\n\n\n\n\n\n\n\n\n\n");
+	switch (packet->packetType) {
+		case 0x3C: // KeepAlive
+		case 0x79: // PlayerUpdatePosition
+			break;
+		default:
+			printf("packetType: %d - Return Address: %p\n", packet->packetType, _ReturnAddress());
+			printf("\n\n\n\n\n");
 	}
 	handleIncomingZonePackets_orig(thisPtr, packet, data, dataLen, time, a6);
 }
@@ -408,13 +403,14 @@ static void ReadValueFromBuffer(void* destination, DataLoadByPacket* buffer, siz
 
 static void(*ClientItemDefinitionStatsread_orig)(DataLoadByPacket* a1, void* a2);
 static void ClientItemDefinitionStatsread(DataLoadByPacket* a1, void* a2) {
-	printf("********ClientItemDefinitionStatsread\n\n");
+	#ifdef CONSOLE_ENABLED
+	//printf("********ClientItemDefinitionStatsread\n\n");
+	#endif
 	ClientItemDefinitionStatsread_orig(a1, a2);
 }
 
 static void(*ItemDefinitionReadFromBuffer_orig)(ClientItemDefinition* a1, DataLoadByPacket* buffer);
 static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPacket* buffer) {
-	printf("********ItemDefinitionReadFromBuffer\n\n");
 	// packet reading
 
 	ReadValueFromBuffer(&a1->baseitemdefinition0.dword8, buffer, sizeof(int));
@@ -528,8 +524,11 @@ static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPac
 	ReadValueFromBuffer(&a1->SCRAP_VALUE_OVERRIDE, buffer, sizeof(int)); // SCRAP_VALUE_OVERRIDE
 
 	ClientItemDefinitionStatsread_orig(buffer, &a1->qword220);// read func
+
+	#ifdef CONSOLE_ENABLED
+	//printf("ItemDefinition recieved - ID: %d - Flags: %d, %d\n", a1->baseitemdefinition0.dword8, a1->baseitemdefinition0.bitflags[0], a1->baseitemdefinition0.bitflags[1]);
+	#endif
 	
-	printf("ItemDefinition recieved - ID: %d - Flags: %d, %d\n", a1->baseitemdefinition0.dword8, a1->baseitemdefinition0.bitflags[0], a1->baseitemdefinition0.bitflags[1]);
 	buffer->failureFlag = 0;
 }
 
@@ -560,8 +559,6 @@ static void* ClientPlayerItemManager__CreateItem(void* a1, void* a2) {
 	return ret;
 }
 
-
-
 static void (*ReadItemDataFromBuffer_orig)(void* a1, void* a2);
 static void ReadItemDataFromBuffer(void* a1, void* a2) {
 	printf("********ReadItemDataFromBuffer\n\n");
@@ -580,23 +577,46 @@ static void ConstructionPlacementFinalizePacket(constructionRelated__ *a1) {
 static void (*BeginCharacterAccessRead_orig)(void* a1, void* a2);
 static void BeginCharacterAccessRead(void* a1, void* a2) {
 	printf("********BeginCharacterAccessRead\n\n");
-
 	BeginCharacterAccessRead_orig(a1, a2);
 }
 
 static void (*ItemsReadFunc_orig)(void* a1, void* a2);
 static void ItemsReadFunc(void* a1, void* a2) {
 	printf("********ItemsReadFunc\n\n");
-
 	ItemsReadFunc_orig(a1, a2);
 }
 
 static void (*sub_140BAA8C0_orig)(void* a1, void* a2);
 static void sub_140BAA8C0(void* a1, void* a2) {
 	printf("********sub_140BAA8C0\n\n");
-
 	sub_140BAA8C0_orig(a1, a2);
 }
+
+static void (*sub_140447B70_orig)(void* a1, void* a2);
+static void sub_140447B70(void* a1, void* a2) {
+	printf("********sub_140447B70\n\n");
+	sub_140447B70_orig(a1, a2);
+}
+
+static void (*sub_1405FC580_orig)(void* a1, void* a2, void* a3);
+static void sub_1405FC580(void* a1, void* a2, void* a3) {
+	printf("********sub_1405FC580\n\n");
+	sub_1405FC580_orig(a1, a2, a3);
+}
+
+static void (*ContainerDefinitionManagerLoadDefinitionsFromFile_orig)(void* a1, void* a2);
+static void ContainerDefinitionManagerLoadDefinitionsFromFile(void* a1, void* a2) {
+	printf("\n\n\n\n\n\n\n\n\n\n\n\n\n********ContainerDefinitionManager::LoadDefinitionsFromFile");
+	char buffer[512];
+	MessageBox(
+		NULL,
+		buffer,
+		"ContainerDefinitionManager::LoadDefinitionsFromFile",
+		MB_ICONWARNING | MB_DEFBUTTON2
+	);
+	ContainerDefinitionManagerLoadDefinitionsFromFile_orig(a1, a2);
+}
+
 
 bool VCPatcher::Init()
 {
@@ -619,8 +639,8 @@ bool VCPatcher::Init()
 	// ####################     Release hooks     ####################
 	// ITEMDEFINITION HOOKS:
 	MH_CreateHook((char*)0x1406F3DA0, ItemDefinitionReadFromBuffer, (void**)&ItemDefinitionReadFromBuffer_orig);
-	MH_CreateHook((char*)0x1406F4540, ClientItemDefinitionStatsread, (void**)&ClientItemDefinitionStatsread_orig);//ClientItemDefinitionStats
-	MH_CreateHook((char*)0x140467F40, ReadStringFromBuffer, (void**)&ReadStringFromBuffer_orig);// ReadStringFromBuffer
+	MH_CreateHook((char*)0x1406F4540, ClientItemDefinitionStatsread, (void**)&ClientItemDefinitionStatsread_orig);
+	MH_CreateHook((char*)0x140467F40, ReadStringFromBuffer, (void**)&ReadStringFromBuffer_orig);
 
 	// LUA:
 	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
@@ -662,6 +682,12 @@ bool VCPatcher::Init()
 	MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
 	MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
 	MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
+
+	
+	MH_CreateHook((char*)0x140447B70, sub_140447B70, (void**)&sub_140447B70_orig);
+	MH_CreateHook((char*)0x1405FC580, sub_1405FC580, (void**)&sub_1405FC580_orig);
+
+	MH_CreateHook((char*)0x141754090, ContainerDefinitionManagerLoadDefinitionsFromFile, (void**)&ContainerDefinitionManagerLoadDefinitionsFromFile_orig);
 
 	// EQUIPMENT HOOKS:
 

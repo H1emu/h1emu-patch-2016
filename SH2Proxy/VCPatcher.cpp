@@ -125,6 +125,7 @@ static void logFuncCustomCallOrig(void* a1, const char* fmt, va_list args) {
 	}
 }
 
+
 //ANTI DEBUG
 bool IsDebuggerPresentOurs() {
 	return true;
@@ -381,157 +382,6 @@ static void loadoutSelectSlotRead(void* a1, void* a2, void* a3) {
 
 // end of loadout
 
-// item def
-
-static void(*ReadStringFromBuffer_orig)(DataLoadByPacket* buffer, __int64* destination);
-static void ReadStringFromBuffer(DataLoadByPacket* buffer, __int64* destination) {
-	ReadStringFromBuffer_orig(buffer, destination);
-}
-
-static void ReadValueFromBuffer(void* destination, DataLoadByPacket* buffer, size_t size) {
-	if (buffer->pBuffer + size <= buffer->pBufferEnd)
-	{
-		memcpy(destination, buffer->pBuffer, size);
-		buffer->pBuffer += size;
-	}
-	else
-	{
-		buffer->pBuffer = buffer->pBufferEnd;
-		buffer->failureFlag = 1;
-	}
-}
-
-static void(*ClientItemDefinitionStatsread_orig)(DataLoadByPacket* a1, void* a2);
-static void ClientItemDefinitionStatsread(DataLoadByPacket* a1, void* a2) {
-	#ifdef CONSOLE_ENABLED
-	//printf("********ClientItemDefinitionStatsread\n\n");
-	#endif
-	ClientItemDefinitionStatsread_orig(a1, a2);
-}
-
-static void(*ItemDefinitionReadFromBuffer_orig)(ClientItemDefinition* a1, DataLoadByPacket* buffer);
-static void ItemDefinitionReadFromBuffer(ClientItemDefinition *a1, DataLoadByPacket* buffer) {
-	// packet reading
-
-	ReadValueFromBuffer(&a1->baseitemdefinition0.dword8, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.bitflags[0], buffer, sizeof(char));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.bitflags[1], buffer, sizeof(char));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.NAME_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.DESCRIPTION_ID, buffer, sizeof(int));
-
-	ReadValueFromBuffer(&a1->baseitemdefinition0.CONTENT_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.IMAGE_SET_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.TINT_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.HUD_IMAGE_SET_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.field_34, buffer, sizeof(int)); // unknownDword8
-	ReadValueFromBuffer(&a1->baseitemdefinition0.qword38, buffer, sizeof(int)); // unknownDword9
-	ReadValueFromBuffer(&a1->baseitemdefinition0.COST, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.ITEM_CLASS, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.PROFILE_OVERRIDE, buffer, sizeof(int));
-
-	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.MODEL_NAME);// MODEL_NAME
-	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.TEXTURE_ALIAS);// TEXTURE_ALIAS
-
-	ReadValueFromBuffer(&a1->baseitemdefinition0.GENDER_USAGE, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.ITEM_TYPE, buffer, sizeof(int)); // unknownDword14
-	ReadValueFromBuffer(&a1->baseitemdefinition0.CATEGORY_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.WEAPON_TRAIL_EFFECT_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.COMPOSITE_EFFECT_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.POWER_RATING, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.MIN_PROFILE_RANK, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.RARITY, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.ACTIVATABLE_ABILITY_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.ACTIVATABLE_ABILITY_SET_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.PASSIVE_ABILITY_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.PASSIVE_ABILITY_SET_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.MAX_STACK_SIZE, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.MIN_STACK_SIZE, buffer, sizeof(int));
-
-	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.TINT_ALIAS);// TINT_ALIAS
-
-	ReadValueFromBuffer(&a1->baseitemdefinition0.TINT_GROUP_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.MEMBER_DISCOUNT, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.VIP_RANK_REQUIRED, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.RACE_SET_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.UI_MODEL_CAMERA_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.EQUIP_COUNT_MAX, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.CURRENCY_TYPE, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.DATASHEET_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword14, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.SKILL_SET_ID, buffer, sizeof(int));
-
-	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.OVERLAY_TEXTURE);// OVERLAY_TEXTURE
-	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.DECAL_SLOT);// DECAL_SLOT
-
-	ReadValueFromBuffer(&a1->baseitemdefinition0.OVERLAY_ADJUSTMENT, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.TRIAL_DURATION_SEC, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.NEXT_TRIAL_DELAY_SEC, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.CLIENT_USE_REQUIREMENT_ID, buffer, sizeof(int));
-
-	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.OVERRIDE_APPEARANCE);// OVERRIDE_APPEARANCE
-
-	ReadValueFromBuffer(&a1->baseitemdefinition0.OVERRIDE_CAMERA_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword42, buffer, sizeof(int)); // unknownDword42
-	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword43, buffer, sizeof(int)); // unknownDword43
-	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword44, buffer, sizeof(int)); // unknownDword44
-	ReadValueFromBuffer(&a1->baseitemdefinition0.BULK, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.ACTIVE_EQUIP_SLOT_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.PASSIVE_EQUIP_SLOT_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.PASSIVE_EQUIP_SLOT_GROUP_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.unknownDword49, buffer, sizeof(int)); // unknownDword49
-	ReadValueFromBuffer(&a1->baseitemdefinition0.GRINDER_REWARD_SET_ID, buffer, sizeof(int));
-	ReadValueFromBuffer(&a1->baseitemdefinition0.BUILD_BAR_GROUP_ID, buffer, sizeof(int));
-
-	ReadStringFromBuffer_orig(buffer, &a1->baseitemdefinition0.unknownString7);// unknownString7
-
-	char* v58 = buffer->pBuffer;
-	if (v58 + 1 <= buffer->pBufferEnd)
-	{
-		a1->baseitemdefinition0.unknownBoolean1 = *v58 != 0;// unknownBoolean1
-		++buffer->pBuffer;
-	}
-	else
-	{
-		a1->baseitemdefinition0.unknownBoolean1 = 0;
-		buffer->pBuffer = buffer->pBufferEnd;
-		buffer->failureFlag = 1;
-	}
-
-	char* v59 = buffer->pBuffer;
-	if (v59 + 1 <= buffer->pBufferEnd)
-	{
-		a1->baseitemdefinition0.IS_ARMOR = *v59 != 0;// IS_ARMOR
-		++buffer->pBuffer;
-	}
-	else
-	{
-		a1->baseitemdefinition0.IS_ARMOR = 0;
-		buffer->pBuffer = buffer->pBufferEnd;
-		buffer->failureFlag = 1;
-	}
-	
-	ReadValueFromBuffer(&a1->qword1F0, buffer, sizeof(int)); // unknownDword52
-	ReadValueFromBuffer(&a1->field_1F4, buffer, sizeof(int)); // unknownDword53
-	ReadValueFromBuffer(&a1->qword1F8, buffer, sizeof(int)); // unknownDword54
-	ReadValueFromBuffer(&a1->field_1FC, buffer, sizeof(int)); // unknownDword55
-
-
-	ReadStringFromBuffer_orig(buffer, &a1->qword208);// unknownString8
-
-
-	ReadValueFromBuffer(&a1->baseitemdefinition0.UI_MODEL_CAMERA_ID, buffer, sizeof(int)); // UI_MODEL_CAMERA_ID
-	ReadValueFromBuffer(&a1->field_200, buffer, sizeof(int)); // unknownDword57
-	ReadValueFromBuffer(&a1->SCRAP_VALUE_OVERRIDE, buffer, sizeof(int)); // SCRAP_VALUE_OVERRIDE
-
-	ClientItemDefinitionStatsread_orig(buffer, &a1->qword220);// read func
-
-	#ifdef CONSOLE_ENABLED
-	//printf("ItemDefinition recieved - ID: %d - Flags: %d, %d\n", a1->baseitemdefinition0.dword8, a1->baseitemdefinition0.bitflags[0], a1->baseitemdefinition0.bitflags[1]);
-	#endif
-	
-	buffer->failureFlag = 0;
-}
-
 static char(*networkProximityUpdatesComplete_orig)(void* a1, void* a2, void* a3, void* a4);
 static char networkProximityUpdatesComplete(void* a1, void* a2, void* a3, void* a4) {
 	char ret = networkProximityUpdatesComplete_orig(a1, a2, a3, a4);
@@ -604,18 +454,95 @@ static void sub_1405FC580(void* a1, void* a2, void* a3) {
 	sub_1405FC580_orig(a1, a2, a3);
 }
 
-static void (*ContainerDefinitionManagerLoadDefinitionsFromFile_orig)(void* a1, void* a2);
-static void ContainerDefinitionManagerLoadDefinitionsFromFile(void* a1, void* a2) {
-	printf("\n\n\n\n\n\n\n\n\n\n\n\n\n********ContainerDefinitionManager::LoadDefinitionsFromFile");
+static ContainerDefinition *(*GetContainerDefinition_orig)(void* a1, unsigned int a2);
+static ContainerDefinition *GetContainerDefinition(void* a1, unsigned int a2) {
+	printf("\n\n\n\n\n\n\n\n\n\n\n\n\n********ContainerDefinitionManager::GetContainerDefinition return address: %p\n\n", _ReturnAddress());
+	printf("containerDefinitionId: %i\n", a2);
+	/*
 	char buffer[512];
 	MessageBox(
 		NULL,
 		buffer,
-		"ContainerDefinitionManager::LoadDefinitionsFromFile",
+		"ContainerDefinitionManager::GetContainerDefinition",
 		MB_ICONWARNING | MB_DEFBUTTON2
 	);
-	ContainerDefinitionManagerLoadDefinitionsFromFile_orig(a1, a2);
+	*/
+	ContainerDefinition* ret = GetContainerDefinition_orig(a1, a2);
+	printf("MAXIMUM_SLOTS %i\n", ret->MAXIMUM_SLOTS);
+	printf("MAX_BULK %i\n", ret->MAX_BULK);
+	return ret;
 }
+
+static void* (*GetItemErrorMessage_orig)(unsigned int a1);
+static void* GetItemErrorMessage(unsigned int a1) {
+	void* ret = GetItemErrorMessage_orig(a1);
+	printf("********GetItemErrorMessage return address: %p\n\n", _ReturnAddress());
+	return ret;
+}
+
+
+static __int64 (*sub_1405FE160_orig)(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, int a7, unsigned int a8);
+static __int64 sub_1405FE160(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, int a7, unsigned int a8) {
+	__int64 ret = sub_1405FE160_orig(a1, a2, a3, a4, a5, a6, a7, a8);
+	printf("********sub_1405FE160 return address: %p ret: %d\n\n", _ReturnAddress(), ret);
+	return ret;
+}
+
+
+
+static void (*GetItemErrorMessageReturn_orig)(double a1, unsigned int a2);
+static void GetItemErrorMessageReturn(double a1, unsigned int a2) {
+	printf("********GetItemErrorMessageReturn return address: %p\n\n", _ReturnAddress());
+	GetItemErrorMessageReturn_orig(a1, a2);
+}
+
+static void (*GetItemErrorMessageReturnReturn_orig)(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, void* a7);
+static void GetItemErrorMessageReturnReturn(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, void* a7) {
+	printf("********GetItemErrorMessageReturnReturn return address: %p\n\n", _ReturnAddress());
+	GetItemErrorMessageReturnReturn_orig(a1, a2, a3, a4, a5, a6, a7);
+}
+
+static void (*sub_140B27400_orig)(void* a1, void* a2);
+static void sub_140B27400(void* a1, void* a2) {
+	printf("********sub_140B27400 return address: %p\n\n", _ReturnAddress());
+	sub_140B27400_orig(a1, a2);
+}
+
+static bool (*LoadoutIdValidate_orig)(ClientLoadoutManager* a1);
+static bool LoadoutIdValidate(ClientLoadoutManager* a1) {
+	bool ret = LoadoutIdValidate_orig(a1);
+	printf("********LoadoutIdValidate return address: %p, ret: %d\n\n", _ReturnAddress(), ret);
+	printf("activeLoadoutSlots %d\n", a1->activeLoadoutSlots);
+	printf("field_18 %d\n", a1->field_18);
+	printf("loadoutId %d\n", a1->loadoutId);
+	return true; // force loadoutId validation
+}
+
+
+static bool (*GetIsContainer_orig)(ClientItemDefinition* a1);
+static bool GetIsContainer(ClientItemDefinition* a1) {
+	bool ret = GetIsContainer_orig(a1);
+	printf("********GetIsContainer return address: %p, ret: %d\n\n", _ReturnAddress(), ret);
+	printf("ITEM_TYPE %d\n", a1->baseitemdefinition0.ITEM_TYPE);
+	printf("ID %d\n", a1->baseitemdefinition0.dword8);
+	return ret; 
+}
+
+
+static void(*ItemDefinitionReadFromBuffer_orig)(ClientItemDefinition* a1, DataLoadByPacket* buffer);
+static void ItemDefinitionReadFromBuffer(ClientItemDefinition* a1, DataLoadByPacket* buffer) {
+	if (buffer->pBuffer + 4 <= buffer->pBufferEnd)
+	{
+		buffer->pBuffer = buffer->pBuffer + 4;                   // ID
+	}
+	else
+	{
+		buffer->failureFlag = 1;
+		buffer->pBuffer = buffer->pBufferEnd;
+	}
+	ItemDefinitionReadFromBuffer_orig(a1, buffer);
+}
+
 
 
 bool VCPatcher::Init()
@@ -639,14 +566,31 @@ bool VCPatcher::Init()
 	// ####################     Release hooks     ####################
 	// ITEMDEFINITION HOOKS:
 	MH_CreateHook((char*)0x1406F3DA0, ItemDefinitionReadFromBuffer, (void**)&ItemDefinitionReadFromBuffer_orig);
-	MH_CreateHook((char*)0x1406F4540, ClientItemDefinitionStatsread, (void**)&ClientItemDefinitionStatsread_orig);
-	MH_CreateHook((char*)0x140467F40, ReadStringFromBuffer, (void**)&ReadStringFromBuffer_orig);
 
 	// LUA:
 	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
 
 	// ####################     Debug hooks     ####################
 	#ifdef CONSOLE_ENABLED
+
+	// testing
+
+
+
+	MH_CreateHook((char*)0x140B339D0, GetIsContainer, (void**)&GetIsContainer_orig);
+
+	MH_CreateHook((char*)0x14178F530, LoadoutIdValidate, (void**)&LoadoutIdValidate_orig);
+
+	
+	MH_CreateHook((char*)0x141787620, GetItemErrorMessage, (void**)&GetItemErrorMessage_orig);
+
+	MH_CreateHook((char*)0x1405B9680, GetItemErrorMessageReturn, (void**)&GetItemErrorMessageReturn_orig);
+
+	MH_CreateHook((char*)0x1405BC490, GetItemErrorMessageReturnReturn, (void**)&GetItemErrorMessageReturnReturn_orig);
+
+	MH_CreateHook((char*)0x140B27400, sub_140B27400, (void**)&sub_140B27400_orig);
+
+	MH_CreateHook((char*)0x1405FE160, sub_1405FE160, (void**)&sub_1405FE160_orig);
 
 	// ACCESSEDCHARACTERBASE HOOKS
 
@@ -687,7 +631,7 @@ bool VCPatcher::Init()
 	MH_CreateHook((char*)0x140447B70, sub_140447B70, (void**)&sub_140447B70_orig);
 	MH_CreateHook((char*)0x1405FC580, sub_1405FC580, (void**)&sub_1405FC580_orig);
 
-	MH_CreateHook((char*)0x141754090, ContainerDefinitionManagerLoadDefinitionsFromFile, (void**)&ContainerDefinitionManagerLoadDefinitionsFromFile_orig);
+	MH_CreateHook((char*)0x1417543E0, GetContainerDefinition, (void**)&GetContainerDefinition_orig);
 
 	// EQUIPMENT HOOKS:
 
@@ -697,8 +641,6 @@ bool VCPatcher::Init()
 	//Other
 
 	MH_CreateHook((char*)0x1403FD710, SpawnLightweightPc, (void**)&SpawnLightweightPc_orig);
-	
-	MH_CreateHook((char*)0x14039E0A0, sub_14039E0A0, (void**)&sub_14039E0A0_orig); // sanity check (Pc / Npc / Vehicle)
 	
 	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
 	

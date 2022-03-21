@@ -653,3 +653,105 @@ struct Vtable_qword_142102788
 	__int64(__fastcall* sub_14076FBB0)(__int64 a1, __int64 a2);
 	__int64* (__fastcall* sub_140770040)(__int64 a1, int a2, int* a3, char a4);
 };
+
+
+struct ContainerDefinition;
+
+/* 578 */
+struct __declspec(align(8)) ContainerDefinition_vtbl
+{
+	char(__fastcall* ContainerDefinitionLoadDefinitionFromFile)(ContainerDefinition* a1, __int64 a2, double a3);
+	char* (__fastcall* sub_1417E8900)();
+	__int64(__fastcall* sub_1417E87C0)(__int64 a1, char a2);
+	const char* (__fastcall* sub_1417E88C0)();
+};
+
+/* 574 */
+struct Vtable_142504A50
+{
+	bool(__fastcall* sub_140428180)(__int64 a1, __int64 a2);
+	__int64(__fastcall* sub_1417E87A0)(__int64 a1, char a2);
+};
+
+/* 575 */
+struct /*VFT*/ SoeUtilArray_t_ContainerSlotDefinition_0_1_t__vtbl
+{
+	__int64(__fastcall* sub_141753ED0)(__int64 a1, char a2);
+	__int64* (__fastcall* sub_1417541D0)(__int64 a1, int a2, int* a3, char a4);
+};
+
+/* 576 */
+struct ContainerDefinition
+{
+	ContainerDefinition_vtbl* __vftable;
+	_BYTE gap_8[8];
+	Vtable_142504A50* __vftable_10;
+	int ID;
+	_BYTE gap_1C[4];
+	char flags;
+	_BYTE gap_21[3];
+	int MAXIMUM_SLOTS;
+	int MAXIMUM_WEIGHT;
+	int ITEM_SPAWNER_ID;
+	int MAX_BULK;
+	int MAX_SLOT_BULK;
+	int ALLOWED_ITEM_CLASS_ID;
+	_BYTE gap_3C[4];
+	SoeUtilArray_t_ContainerSlotDefinition_0_1_t__vtbl* __vftable_40;
+	__int64 field_48;
+	__int64 field_50;
+	__int64 field_58;
+	__int64 field_60;
+	int containerDefinitionId;
+	char field_6C;
+	char field_6D;
+	char field_6E;
+	char field_6F;
+	__int64 field_70;
+};
+
+struct SoeUtil__HashListMap_t_SoeUtil__StrongType_t_int_Loadouts__SoeUtilSignatureLoadoutSlotId_0_t__Loadouts__LoadoutSlot_8_1_t__vtbl;
+
+/* 600 */
+struct __declspec(align(4)) ClientLoadoutManager
+{
+	int loadoutId;
+	int field_4;
+	SoeUtil__HashListMap_t_SoeUtil__StrongType_t_int_Loadouts__SoeUtilSignatureLoadoutSlotId_0_t__Loadouts__LoadoutSlot_8_1_t__vtbl* HashListMapLoadoutSlots;
+	int field_10;
+	int field_14;
+	__int64 field_18;
+	__int64 field_20;
+	int activeLoadoutSlots;
+	_BYTE gap_2C[4];
+	__int64 field_30;
+	__int64 field_38;
+	__int64 field_40;
+	__int64 field_48;
+	__int64 field_50;
+	__int64 field_58;
+	__int64 field_60;
+	__int64 field_68;
+	int loadoutSlotIdMaybe;
+	_BYTE gap_74[4];
+	__int64 field_78;
+	char field_80;
+	_BYTE gap_81[7];
+	__int64 LoadoutSlotDefinitionDataSource;
+	__int64 LoadoutSlotItemDataSource;
+	__int64 LoadoutSlotContainerDataSource;
+	__int64 CurrentLoadoutDataSource;
+	__int64 ArmorLoadoutSlotItemDataSource;
+	_BYTE gap_B0[8];
+	__int64 field_B8;
+	int field_C0;
+	int field_C4;
+	_BYTE gap_C8[112];
+	int field_138;
+};
+
+/* 557 */
+struct /*VFT*/ SoeUtil__HashListMap_t_SoeUtil__StrongType_t_int_Loadouts__SoeUtilSignatureLoadoutSlotId_0_t__Loadouts__LoadoutSlot_8_1_t__vtbl
+{
+	__int64* (__fastcall* sub_1403BBB50)(__int64* a1, char a2);
+};

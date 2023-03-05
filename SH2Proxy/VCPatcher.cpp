@@ -20,6 +20,8 @@ static bool consoleShowing = false;
 // luaVM ptr
 void* L = (void*)0x143C45470;
 
+void* ConsoleRelated = nullptr;
+
 void hexDump(const char* desc, const void* addr, const int len);
 
 static void* FindCallFromAddress(void* methodPtr, ud_mnemonic_code mnemonic = UD_Icall, bool breakOnFirst = false)
@@ -294,14 +296,10 @@ void ReadStringFromBuffer(Buffer& buffer, std::string& str) {
 		buffer.failFlag = true;
 		return;
 	}
-
+	
+	// Read the string length from the first 4 bytes of the buffer
 	uint32_t strLength = 0;
 	ReadDwordFromBuffer(&buffer, &strLength);
-	/*
-	// Read the string length from the first 4 bytes of the buffer
-	
-	std::memcpy(&strLength, buffer.pBuffer, sizeof(strLength));
-	buffer.pBuffer += sizeof(strLength);*/
 
 	// Check if the length is valid
 	if (buffer.failFlag || strLength > static_cast<uint32_t>(buffer.pBufferEnd - buffer.pBuffer)) {
@@ -314,19 +312,28 @@ void ReadStringFromBuffer(Buffer& buffer, std::string& str) {
 	buffer.pBuffer += strLength;
 }
 
-static void (*printToGameConsole_orig)(void* a1, void* a2);
-static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, void* a3, void* a4);
+static void (*onPrintConsole_orig)(void* a1, void* a2, char a3, void* a4);
 static void handlePrintConsolePacket(Buffer* buffer) {
 	std::string str;
+	ReadStringFromBuffer(*buffer, str);
+
+	if (ConsoleRelated && !buffer->failFlag) {
+		onPrintConsole_orig(ConsoleRelated, (void*)(str.c_str()), 0, 0);
+	}
+}
+
+static void handleMessageBoxPacket(Buffer* buffer) {
+	std::string title;
+	ReadStringFromBuffer(*buffer, title);
+
+	std::string message;
+	ReadStringFromBuffer(*buffer, message);
+
 	if (buffer->failFlag) {
 		return;
 	}
-	ReadStringFromBuffer(*buffer, str);
-	// temp until can print to ingame console
-	printf("%s\n", str.c_str());
-	
-	printToGameConsole_orig(nullptr, (void*)(str.c_str()));
-	//executeLuaFunc_orig(L, "Console:ShowMessage", (void*)(str.c_str()), nullptr);
+
+	MessageBox(NULL, message.c_str(), title.c_str(), MB_OK);
 }
 
 static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
@@ -346,10 +353,11 @@ static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 		return;
 	}
 	switch (opcode) {
-		case cPacketIdPrintConsole:
+		case cPacketIdPrintToConsole:
 			handlePrintConsolePacket(&buffer);
 			break;
 		case cPacketIdMessageBox:
+			handleMessageBoxPacket(&buffer);
 			break;
 		default:
 			printf("Unhandled h1emu custom packet %02x", opcode);
@@ -374,7 +382,7 @@ static void handleIncomingZonePackets(BaseClient* thisPtr, IncomingPacket* packe
 }
 
 static bool gameConsoleShowing = false;
-//static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, void* a3, void* a4);
+static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, void* a3, void* a4);
 static void executeLuaFuncStub(void* LuaVM, char* funcName, void* a3, void* a4) {
 	void* retAddr = _ReturnAddress();
 	std::string func = funcName;
@@ -640,10 +648,13 @@ static bool GetIsContainer(ClientItemDefinition* a1) {
 	return ret; 
 }
 
-//static void (*printToGameConsole_orig)(void* a1, void* a2);
-static void printToGameConsole(void* a1, void* a2) {
-	printf("********PrintToGameConsole %p\n\n", _ReturnAddress());
-	printToGameConsole_orig(a1, a2);
+//static void (*onPrintConsole_orig)(void* a1, void* a2, char a3, void* a4);
+static void onPrintConsole(void* a1, void* a2, char a3, void* a4) {
+	printf("********OnPrintConsole %p\n\n", _ReturnAddress());
+	if (!ConsoleRelated) {
+		ConsoleRelated = a1;
+	}
+	onPrintConsole_orig(a1, a2, a3, a4);
 }
 
 
@@ -686,10 +697,10 @@ bool VCPatcher::Init()
 	// LUA:
 	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
 
-
-	MH_CreateHook((char*)0x1409DE1A0, printToGameConsole, (void**)&printToGameConsole_orig);
+	// Custom packets:
 	
-
+	MH_CreateHook((char*)0x14099DC10, onPrintConsole, (void**)&onPrintConsole_orig);
+	
 
 	// ####################     Debug hooks     ####################
 	#ifdef CONSOLE_ENABLED

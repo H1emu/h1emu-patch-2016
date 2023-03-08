@@ -32,3 +32,8 @@ enum ClientStates {
 	ClientRunStateVerifyXBLiveLogin = 34,
 	ClientRunStateShuttingDown = 35
 };
+
+enum H1emuPackets {
+	cPacketIdPrintToConsole = 0x01,
+	cPacketIdMessageBox = 0x02
+};

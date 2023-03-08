@@ -11,7 +11,7 @@
 #include "../H1Z1/H1Z1.exe.h"
 #include "../H1Z1/enums.h"
 
-#define CONSOLE_ENABLED
+//#define CONSOLE_ENABLED
 
 using namespace std;
 
@@ -367,16 +367,23 @@ static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 
 static void(*handleIncomingZonePackets_orig)(BaseClient* thisPtr, IncomingPacket* packet, DataLoadByPacket* buffer, int bufferLen, float time, int a6);
 static void handleIncomingZonePackets(BaseClient* thisPtr, IncomingPacket* packet, DataLoadByPacket* buffer, int bufferLen, float time, int a6) {
+	#ifdef CONSOLE_ENABLED
+	// for debug print only
 	switch (packet->packetType) {
 		case 0x3C: // KeepAlive
 		case 0x79: // PlayerUpdatePosition
 			break;
-		case 0x99: // H1emu custom
-			handleH1emuCustomPackets(buffer, bufferLen);
-			break;
 		default:
 			printf("packetType: %d - Return Address: %p\n", packet->packetType, _ReturnAddress());
 			printf("\n\n\n\n\n");
+	}
+	#endif
+
+	// custom packet handler
+	switch (packet->packetType) {
+		case 0x99: // H1emu custom
+			handleH1emuCustomPackets(buffer, bufferLen);
+			break;
 	}
 	handleIncomingZonePackets_orig(thisPtr, packet, buffer, bufferLen, time, a6);
 }
@@ -715,6 +722,8 @@ bool VCPatcher::Init()
 	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
 
 	// Custom packets:
+
+	MH_CreateHook((char*)0x1403FE210, handleIncomingZonePackets, (void**)&handleIncomingZonePackets_orig);
 	
 	MH_CreateHook((char*)0x14099DC10, onPrintConsole, (void**)&onPrintConsole_orig);
 	
@@ -795,8 +804,6 @@ bool VCPatcher::Init()
 	MH_CreateHook((char*)0x1403FD710, SpawnLightweightPc, (void**)&SpawnLightweightPc_orig);
 	
 	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
-	
-	MH_CreateHook((char*)0x1403FE210, handleIncomingZonePackets, (void**)&handleIncomingZonePackets_orig);
 	
 	//Logging
 	MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); //hook absolutely every logging function

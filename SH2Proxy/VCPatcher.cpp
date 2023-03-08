@@ -18,7 +18,9 @@ using namespace std;
 static bool consoleShowing = false;
 
 // luaVM ptr
-void* L = (void*)0x143C45470;
+void* L = nullptr;
+static bool gameConsoleShowing = false;
+static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, void* a3, void* a4);
 
 void* ConsoleRelated = nullptr;
 
@@ -329,9 +331,7 @@ static void handleMessageBoxPacket(Buffer* buffer) {
 	std::string message;
 	ReadStringFromBuffer(*buffer, message);
 
-	if (buffer->failFlag) {
-		return;
-	}
+	if (buffer->failFlag) return;
 
 	MessageBox(NULL, message.c_str(), title.c_str(), MB_OK);
 }
@@ -349,7 +349,7 @@ static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 	ReadByteFromBuffer(&buffer, &opcode);
 
 	if (buffer.failFlag) {
-		printf("H1emu packet parse fail.");
+		printf("[ERROR] H1emu packet parse fail.\n");
 		return;
 	}
 	switch (opcode) {
@@ -360,7 +360,7 @@ static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 			handleMessageBoxPacket(&buffer);
 			break;
 		default:
-			printf("Unhandled h1emu custom packet %02x", opcode);
+			printf("[ERROR] Unhandled h1emu custom packet %02x\n", opcode);
 			break;
 	}
 }
@@ -381,9 +381,27 @@ static void handleIncomingZonePackets(BaseClient* thisPtr, IncomingPacket* packe
 	handleIncomingZonePackets_orig(thisPtr, packet, buffer, bufferLen, time, a6);
 }
 
-static bool gameConsoleShowing = false;
-static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, void* a3, void* a4);
+static void handleH1emuConsoleCommand() {
+	if (!L) return;
+
+	executeLuaFunc_orig(L, gameConsoleShowing ? "Console:Hide" : "Console:Show", 0, 0);
+	gameConsoleShowing = !gameConsoleShowing;
+}
+
+static void (*handleCommand_orig)(const char* commandPtr);
+static void handleCommand(const char* commandPtr) {
+	std::string command = commandPtr;
+	if (command == "console") {
+		handleH1emuConsoleCommand();
+		return;
+	}
+	handleCommand_orig(commandPtr);
+}
+
 static void executeLuaFuncStub(void* LuaVM, char* funcName, void* a3, void* a4) {
+	// set global LuaVM ptr
+	if (!L) L = LuaVM;
+
 	void* retAddr = _ReturnAddress();
 	std::string func = funcName;
 	switch ((unsigned long long)retAddr) {
@@ -414,7 +432,7 @@ static void executeLuaFuncStub(void* LuaVM, char* funcName, void* a3, void* a4) 
 }
 
 void OnIntentionalCrash() {
-	printf("daybreak hates you\n");
+	printf("Should have crashed, but will continue executing, return address is: %p\n", _ReturnAddress());
 	char buffer[512];
 	sprintf(buffer, "Should have crashed, but will continue executing, return address is: %p\n", _ReturnAddress());
 	/*MessageBox(
@@ -657,7 +675,6 @@ static void onPrintConsole(void* a1, void* a2, char a3, void* a4) {
 	onPrintConsole_orig(a1, a2, a3, a4);
 }
 
-
 static void(*ItemDefinitionReadFromBuffer_orig)(ClientItemDefinition* a1, DataLoadByPacket* buffer);
 static void ItemDefinitionReadFromBuffer(ClientItemDefinition* a1, DataLoadByPacket* buffer) {
 	if (buffer->pBuffer + 4 <= buffer->pBufferEnd)
@@ -700,6 +717,9 @@ bool VCPatcher::Init()
 	// Custom packets:
 	
 	MH_CreateHook((char*)0x14099DC10, onPrintConsole, (void**)&onPrintConsole_orig);
+	
+	MH_CreateHook((char*)0x14133F230, handleCommand, (void**)&handleCommand_orig);
+
 	
 
 	// ####################     Debug hooks     ####################

@@ -11,7 +11,7 @@
 #include "../H1Z1/H1Z1.exe.h"
 #include "../H1Z1/enums.h"
 
-//#define CONSOLE_ENABLED
+#define CONSOLE_ENABLED
 
 using namespace std;
 
@@ -696,6 +696,18 @@ static void ItemDefinitionReadFromBuffer(ClientItemDefinition* a1, DataLoadByPac
 	ItemDefinitionReadFromBuffer_orig(a1, buffer);
 }
 
+static void(*sendGroupJoinPacket_orig)(void* a1, char joinState);
+static void sendGroupJoinPacket(void* a1, char joinState) {
+	const std::uintptr_t base = 0x1405F9190;
+
+	hook::nopVP(base + 0xAB, 2);
+	hook::nopVP(base + 0xC5, 2);
+	hook::nopVP(base + 0xDB, 2);
+
+	sendGroupJoinPacket_orig(a1, joinState);
+}
+
+
 bool VCPatcher::Init()
 {
 	// #########################################################     Game patches     ########################################################
@@ -721,11 +733,16 @@ bool VCPatcher::Init()
 	// LUA:
 	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
 
-	// Custom packets:
+	// GROUP:
+	MH_CreateHook((char*)0x1405F9190, sendGroupJoinPacket, (void**)&sendGroupJoinPacket_orig);
+
+	// CUSTOM PACKETS:
 
 	MH_CreateHook((char*)0x1403FE210, handleIncomingZonePackets, (void**)&handleIncomingZonePackets_orig);
 	
 	MH_CreateHook((char*)0x14099DC10, onPrintConsole, (void**)&onPrintConsole_orig);
+
+	// CUSTOM COMMANDS:
 	
 	MH_CreateHook((char*)0x14133F230, handleCommand, (void**)&handleCommand_orig);
 

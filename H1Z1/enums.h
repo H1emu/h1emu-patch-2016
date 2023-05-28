@@ -37,3 +37,8 @@ enum H1emuPackets {
 	cPacketIdPrintToConsole = 0x01,
 	cPacketIdMessageBox = 0x02
 };
+
+enum H1emuLoginPackets {
+	cLoginPacketIdPrintToConsole = 0x01,
+	cLoginPacketIdMessageBox = 0x02
+};

@@ -6,7 +6,7 @@
 #include <winternl.h>
 #include <MinHook.h>
 #include <iostream>
-#include <udis86.h>
+#include "udis86.h"
 
 #include "../H1Z1/H1Z1.exe.h"
 #include "../H1Z1/enums.h"
@@ -319,6 +319,16 @@ static void handlePrintConsolePacket(Buffer* buffer) {
 	std::string str;
 	ReadStringFromBuffer(*buffer, str);
 
+	char showConsole = 0;
+	ReadByteFromBuffer(buffer, &showConsole);
+
+	if(showConsole > 0) {
+		if (L && !gameConsoleShowing) {
+			executeLuaFunc_orig(L, "Console:Show", 0, 0);
+			gameConsoleShowing = true;
+		}
+	}
+
 	if (ConsoleRelated && !buffer->failFlag) {
 		onPrintConsole_orig(ConsoleRelated, (void*)(str.c_str()), 0, 0);
 	}
@@ -405,6 +415,59 @@ static void handleCommand(const char* commandPtr) {
 	handleCommand_orig(commandPtr);
 }
 
+static void handleH1emuLoginPackets(Buffer* buffer, int bufferLen) {
+	char opcode = 0;
+	ReadByteFromBuffer(buffer, &opcode);
+
+	if (buffer->failFlag) {
+		printf("[ERROR] H1emu login packet parse fail.\n");
+		return;
+	}
+	switch (opcode) {
+	case cLoginPacketIdPrintToConsole:
+		handlePrintConsolePacket(buffer);
+		break;
+	case cLoginPacketIdMessageBox:
+		handleMessageBoxPacket(buffer);
+		break;
+	default:
+		printf("[ERROR] Unhandled h1emu custom login packet %02x\n", opcode);
+		break;
+	}
+}
+
+static void(*handleIncomingLoginPackets_orig)(void* thisPtr, DataLoadByPacket* data, int bufferLen, void* callback);
+static void handleIncomingLoginPackets(void* thisPtr, DataLoadByPacket* data, int bufferLen, void* callback) {
+	Buffer buffer = {
+		(char*)data,
+		bufferLen,
+		(char*)data + bufferLen,
+		false
+	};
+
+	char opcode = 0;
+	ReadByteFromBuffer(&buffer, &opcode);
+
+	#ifdef CONSOLE_ENABLED
+		printf("LOGIN packetType: %d - Return Address: %p\n", opcode, _ReturnAddress());
+		printf("\n\n\n\n\n");
+	#endif
+
+	// custom packet handler
+	// since loginserver opcodes serverside are only a byte, use 0x20 + for h1emu packets
+	if (opcode >= 0x20) {
+		handleH1emuLoginPackets(&buffer, bufferLen);
+		return;
+	}
+	handleIncomingLoginPackets_orig(thisPtr, data, bufferLen, callback);
+}
+
+
+
+
+
+
+
 static void executeLuaFuncStub(void* LuaVM, char* funcName, void* a3, void* a4) {
 	// set global LuaVM ptr
 	if (!L) L = LuaVM;
@@ -426,9 +489,12 @@ static void executeLuaFuncStub(void* LuaVM, char* funcName, void* a3, void* a4) 
 					gameConsoleShowing = !gameConsoleShowing;
 					return;
 				}
-				else if ((func == "GameEvents:OnEscape" || func == "Console:OnSwfFocus") && gameConsoleShowing) { // closes console on ~ or escape
+				// using Console:OnSwfFocus to close console breaks it, so it's disabled for now
+				else if (func == "GameEvents:OnEscape" /* || func == "Console:OnSwfFocus")*/ && gameConsoleShowing) { // closes console on ~ or escape
 					executeLuaFunc_orig(LuaVM, "Console:Hide", 0, 0);
 					executeLuaFunc_orig(LuaVM, funcName, a3, a4); // executes normal GameEvents:OnEscape / "Console:OnSwfFocus"
+					executeLuaFunc_orig(LuaVM, "Console:Update", 0, 0); // may not be needed
+				
 					gameConsoleShowing = !gameConsoleShowing;
 					return;
 				}
@@ -739,6 +805,8 @@ bool VCPatcher::Init()
 	// CUSTOM PACKETS:
 
 	MH_CreateHook((char*)0x1403FE210, handleIncomingZonePackets, (void**)&handleIncomingZonePackets_orig);
+
+	MH_CreateHook((char*)0x14163EFA0, handleIncomingLoginPackets, (void**)&handleIncomingLoginPackets_orig);
 	
 	MH_CreateHook((char*)0x14099DC10, onPrintConsole, (void**)&onPrintConsole_orig);
 

@@ -30,4 +30,8 @@
 #include "libudis86/extern.h"
 #include "libudis86/itab.h"
 
+enum ud_mnemonic_code
+ud_insn_mnemonic(const struct ud* u);
+
+
 #endif

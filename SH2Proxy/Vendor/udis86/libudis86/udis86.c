@@ -27,6 +27,7 @@
 #include "udint.h"
 #include "extern.h"
 #include "decode.h"
+#include "../udis86.h"
 
 #if !defined(__UD_STANDALONE__)
 # if HAVE_STRING_H
@@ -170,7 +171,7 @@ ud_insn_hex(struct ud* u)
     /* for each byte used to decode instruction */
     for (i = 0; i < ud_insn_len(u) && i < sizeof(u->insn_hexcode) / 2;
          ++i, ++src_ptr) {
-      sprintf(src_hex, "%02x", *src_ptr & 0xFF);
+      sprintf_s(src_hex, "%02x", *src_ptr & 0xFF);
       src_hex += 2;
     }
   }

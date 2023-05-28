@@ -123,6 +123,7 @@
     <TargetName>dinput8</TargetName>
     <OutDir>$(SolutionDir)$(Platform)\Release\</OutDir>
     <IntDir>$(SolutionDir)\Release\</IntDir>
+    <PreBuildEventUseInBuild>true</PreBuildEventUseInBuild>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -241,7 +242,7 @@ copy "$(OutDir)*" "D:\Steam\Games\steamapps\common\Grand Theft Auto Vice City\"<
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SH2PROXY_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;WIN32;NDEBUG;_WINDOWS;_USRDLL;SH2PROXY_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir)\Vendor\jitasm;$(ProjectDir)\Vendor\minhook\include;$(ProjectDir)\Vendor\udis86;$(ProjectDir)\Vendor\udis86\libudis86;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -250,12 +251,13 @@ copy "$(OutDir)*" "D:\Steam\Games\steamapps\common\Grand Theft Auto Vice City\"<
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <ModuleDefinitionFile>dinput8.def</ModuleDefinitionFile>
-      <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Users\csm45\Desktop\AdminClient dinput8\x64\Debug</AdditionalLibraryDirectories>
+      <AdditionalDependencies>winmm.lib;user32.lib;$(OutputPath)MinHook.lib;$(OutputPath)udis86.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>del D:\Steam\Games\steamapps\common\Grand Theft Auto Vice City\d3d8.*
-copy "$(OutDir)*" "D:\Steam\Games\steamapps\common\Grand Theft Auto Vice City\"</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

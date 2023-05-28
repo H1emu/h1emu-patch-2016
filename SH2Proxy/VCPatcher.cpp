@@ -322,6 +322,9 @@ static void handlePrintConsolePacket(Buffer* buffer) {
 	char showConsole = 0;
 	ReadByteFromBuffer(buffer, &showConsole);
 
+	char clearOutput = 0;
+	ReadByteFromBuffer(buffer, &clearOutput);
+
 	if(showConsole > 0) {
 		if (L && !gameConsoleShowing) {
 			executeLuaFunc_orig(L, "Console:Show", 0, 0);
@@ -330,7 +333,8 @@ static void handlePrintConsolePacket(Buffer* buffer) {
 	}
 
 	if (ConsoleRelated && !buffer->failFlag) {
-		onPrintConsole_orig(ConsoleRelated, (void*)(str.c_str()), 0, 0);
+		std::string clear = "\n\n\n\n\n\n\n\n\n\n";
+		onPrintConsole_orig(ConsoleRelated, (void*)((clearOutput? clear + str : str).c_str()), 0, 0);
 	}
 }
 

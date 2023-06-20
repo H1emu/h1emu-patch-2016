@@ -360,7 +360,7 @@ static void handleHadesInit(Buffer* buffer) {
 
 	printf("\n\n\n --------- hades init\n\n");
 	std::string executablePath = ".\\H1Z1_BE.exe";
-	std::string commandLine = executablePath + " -init " + authTicket;
+	std::string commandLine = executablePath + " -init " + authTicket + " " + gatewayServer;
 
 	STARTUPINFOA startupInfo;
 	PROCESS_INFORMATION processInfo;
@@ -398,7 +398,7 @@ static void handleHadesQuery(Buffer* buffer) {
 
 	printf("\n\n\n --------- hades query\n\n");
 	std::string executablePath = ".\\H1Z1_BE.exe";
-	std::string commandLine = executablePath + " -assetcheck " + authTicket;
+	std::string commandLine = executablePath + " -assetcheck " + authTicket + " " + gatewayServer;
 
 	STARTUPINFOA startupInfo;
 	PROCESS_INFORMATION processInfo;

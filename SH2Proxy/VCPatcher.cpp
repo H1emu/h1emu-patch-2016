@@ -448,12 +448,6 @@ static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 		case cPacketIdMessageBox:
 			handleMessageBoxPacket(&buffer);
 			break;
-		case cPacketIdInitHades:
-			handleHadesInit(&buffer);
-			break;
-		case cPacketIdHadesQuery:
-			handleHadesQuery(&buffer);
-			break;
 		default:
 			printf("[ERROR] Unhandled h1emu custom packet %02x\n", opcode);
 			break;
@@ -514,6 +508,12 @@ static void handleH1emuLoginPackets(Buffer* buffer, int bufferLen) {
 		break;
 	case cLoginPacketIdMessageBox:
 		handleMessageBoxPacket(buffer);
+		break;
+	case cPacketIdInitHades:
+		handleHadesInit(buffer);
+		break;
+	case cPacketIdHadesQuery:
+		handleHadesQuery(buffer);
 		break;
 	default:
 		printf("[ERROR] Unhandled h1emu custom login packet %02x\n", opcode);

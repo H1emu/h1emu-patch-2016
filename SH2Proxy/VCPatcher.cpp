@@ -509,10 +509,10 @@ static void handleH1emuLoginPackets(Buffer* buffer, int bufferLen) {
 	case cLoginPacketIdMessageBox:
 		handleMessageBoxPacket(buffer);
 		break;
-	case cPacketIdInitHades:
+	case cLoginPacketIdInitHades:
 		handleHadesInit(buffer);
 		break;
-	case cPacketIdHadesQuery:
+	case cLoginPacketIdHadesQuery:
 		handleHadesQuery(buffer);
 		break;
 	default:

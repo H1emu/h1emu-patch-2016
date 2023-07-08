@@ -11,7 +11,7 @@
 #include "../H1Z1/H1Z1.exe.h"
 #include "../H1Z1/enums.h"
 
-#define CONSOLE_ENABLED
+// #define CONSOLE_ENABLED = 0
 
 using namespace std;
 
@@ -349,7 +349,82 @@ static void handleMessageBoxPacket(Buffer* buffer) {
 
 	MessageBox(NULL, message.c_str(), title.c_str(), MB_OK);
 }
+static void handleHadesInit(Buffer* buffer) {
+	std::string authTicket;
+	ReadStringFromBuffer(*buffer, authTicket);
 
+	std::string gatewayServer;
+	ReadStringFromBuffer(*buffer, gatewayServer);
+
+	if (buffer->failFlag) return;
+
+	printf("\n\n\n --------- hades init\n\n");
+	std::string executablePath = ".\\H1Z1_BE.exe";
+	std::string commandLine = executablePath + " -init " + authTicket + " " + gatewayServer;
+
+	STARTUPINFOA startupInfo;
+	PROCESS_INFORMATION processInfo;
+
+	ZeroMemory(&startupInfo, sizeof(startupInfo));
+	startupInfo.cb = sizeof(startupInfo);
+
+	if (!CreateProcessA(
+		executablePath.c_str(),             // Path to the executable
+		const_cast<LPSTR>(commandLine.c_str()),  // Command line arguments
+		NULL,                               // Process handle not inheritable
+		NULL,                               // Thread handle not inheritable
+		FALSE,                              // Set handle inheritance to FALSE
+		CREATE_NO_WINDOW,                 // Create a new console window
+		NULL,                               // Use parent's environment block
+		NULL,                               // Use parent's starting directory
+		&startupInfo,                       // Pointer to STARTUPINFO structure
+		&processInfo                        // Pointer to PROCESS_INFORMATION structure
+	))
+	{
+		std::cerr << "Failed to start H1Z1_BE.exe" << std::endl;
+		return;
+	}
+	CloseHandle(processInfo.hProcess);
+	CloseHandle(processInfo.hThread);
+}
+static void handleHadesQuery(Buffer* buffer) {
+	std::string authTicket;
+	ReadStringFromBuffer(*buffer, authTicket);
+
+	std::string gatewayServer;
+	ReadStringFromBuffer(*buffer, gatewayServer);
+
+	if (buffer->failFlag) return;
+
+	printf("\n\n\n --------- hades query\n\n");
+	std::string executablePath = ".\\H1Z1_BE.exe";
+	std::string commandLine = executablePath + " -assetcheck " + authTicket + " " + gatewayServer;
+
+	STARTUPINFOA startupInfo;
+	PROCESS_INFORMATION processInfo;
+
+	ZeroMemory(&startupInfo, sizeof(startupInfo));
+	startupInfo.cb = sizeof(startupInfo);
+
+	if (!CreateProcessA(
+		executablePath.c_str(),             // Path to the executable
+		const_cast<LPSTR>(commandLine.c_str()),  // Command line arguments
+		NULL,                               // Process handle not inheritable
+		NULL,                               // Thread handle not inheritable
+		FALSE,                              // Set handle inheritance to FALSE
+		CREATE_NO_WINDOW,                 // Create a new console window CREATE_NO_WINDOW
+		NULL,                               // Use parent's environment block
+		NULL,                               // Use parent's starting directory
+		&startupInfo,                       // Pointer to STARTUPINFO structure
+		&processInfo                        // Pointer to PROCESS_INFORMATION structure
+	))
+	{
+		std::cerr << "Failed to start H1Z1_BE.exe" << std::endl;
+		return;
+	}
+	CloseHandle(processInfo.hProcess);
+	CloseHandle(processInfo.hThread);
+}
 static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 	Buffer buffer = {
 		(char*)data,
@@ -433,6 +508,12 @@ static void handleH1emuLoginPackets(Buffer* buffer, int bufferLen) {
 		break;
 	case cLoginPacketIdMessageBox:
 		handleMessageBoxPacket(buffer);
+		break;
+	case cPacketIdInitHades:
+		handleHadesInit(buffer);
+		break;
+	case cPacketIdHadesQuery:
+		handleHadesQuery(buffer);
 		break;
 	default:
 		printf("[ERROR] Unhandled h1emu custom login packet %02x\n", opcode);

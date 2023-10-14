@@ -11,7 +11,7 @@
 #include "../H1Z1/H1Z1.exe.h"
 #include "../H1Z1/enums.h"
 
-// #define CONSOLE_ENABLED = 0
+#define CONSOLE_ENABLED
 
 using namespace std;
 
@@ -129,6 +129,19 @@ static void logFuncCustomCallOrig(void* a1, const char* fmt, va_list args) {
 	__except (EXCEPTION_EXECUTE_HANDLER)
 	{
 		printf_s("logFuncCustomCallOrig excepted, caught and returned.\n");
+	}
+}
+
+static void(*writeToLog_orig)(void* a1, void* a2, const char* fmt, va_list args);
+static void writeToLog(void* a1, void* a2, const char* fmt, va_list args) {
+	__try
+	{
+		doSomeLogging(fmt, args);
+		writeToLog_orig(a1, a2, fmt, args);
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		printf_s("writeToLog excepted, caught and returned.\n");
 	}
 }
 
@@ -563,6 +576,7 @@ static void executeLuaFuncStub(void* LuaVM, char* funcName, void* a3, void* a4) 
 		case 0x1403FD30D: // OnUpdate
 		case 0x140BFEEA8: // GameEvents:GetInventoryShown
 		case 0x140BFE1AD: // GameEvents:GetInventoryShown
+		case 0x140BFEE2F: // GameEvents:GetInventoryShown
 		case 0x140CFBC62: // HudHandler:GetBattleRoyaleData
 		case 0x14040DF7D: // TooltipMethods:HideFromCode
 			break;
@@ -975,8 +989,15 @@ bool VCPatcher::Init()
 	
 	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
 	
+	
 	//Logging
 	MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); //hook absolutely every logging function
+
+	// logs usually written to a file
+	MH_CreateHook((char*)0x14032FA90, writeToLog, (void**)&writeToLog_orig); //hook absolutely every file logging function
+
+	
+
 	#endif
 	
 	// ###################################################     End of game hooks     ############################################################

@@ -19,8 +19,13 @@ static bool consoleShowing = false;
 
 // luaVM ptr
 void* L = nullptr;
+
+long long g_BaseClientAddr = 0x142B19780;
+
 static bool gameConsoleShowing = false;
 static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, void* a3, void* a4);
+
+std::string assetHashes = "";
 
 void* ConsoleRelated = nullptr;
 
@@ -362,6 +367,7 @@ static void handleMessageBoxPacket(Buffer* buffer) {
 
 	MessageBox(NULL, message.c_str(), title.c_str(), MB_OK);
 }
+
 static void handleHadesInit(Buffer* buffer) {
 	std::string authTicket;
 	ReadStringFromBuffer(*buffer, authTicket);
@@ -381,13 +387,18 @@ static void handleHadesInit(Buffer* buffer) {
 	ZeroMemory(&startupInfo, sizeof(startupInfo));
 	startupInfo.cb = sizeof(startupInfo);
 
+	int consoleFlag = CREATE_NO_WINDOW;
+	#ifdef CONSOLE_ENABLED
+		consoleFlag = 0;
+	#endif
+
 	if (!CreateProcessA(
 		executablePath.c_str(),             // Path to the executable
 		const_cast<LPSTR>(commandLine.c_str()),  // Command line arguments
 		NULL,                               // Process handle not inheritable
 		NULL,                               // Thread handle not inheritable
 		FALSE,                              // Set handle inheritance to FALSE
-		CREATE_NO_WINDOW,                 // Create a new console window
+		consoleFlag,                        // Create a new console window
 		NULL,                               // Use parent's environment block
 		NULL,                               // Use parent's starting directory
 		&startupInfo,                       // Pointer to STARTUPINFO structure
@@ -400,6 +411,8 @@ static void handleHadesInit(Buffer* buffer) {
 	CloseHandle(processInfo.hProcess);
 	CloseHandle(processInfo.hThread);
 }
+
+
 static void handleHadesQuery(Buffer* buffer) {
 	std::string authTicket;
 	ReadStringFromBuffer(*buffer, authTicket);
@@ -419,13 +432,18 @@ static void handleHadesQuery(Buffer* buffer) {
 	ZeroMemory(&startupInfo, sizeof(startupInfo));
 	startupInfo.cb = sizeof(startupInfo);
 
+	int consoleFlag = CREATE_NO_WINDOW;
+	#ifdef CONSOLE_ENABLED
+		consoleFlag = 0;
+	#endif
+
 	if (!CreateProcessA(
 		executablePath.c_str(),             // Path to the executable
 		const_cast<LPSTR>(commandLine.c_str()),  // Command line arguments
 		NULL,                               // Process handle not inheritable
 		NULL,                               // Thread handle not inheritable
 		FALSE,                              // Set handle inheritance to FALSE
-		CREATE_NO_WINDOW,                 // Create a new console window CREATE_NO_WINDOW
+		consoleFlag,                        // Create a new console window CREATE_NO_WINDOW
 		NULL,                               // Use parent's environment block
 		NULL,                               // Use parent's starting directory
 		&startupInfo,                       // Pointer to STARTUPINFO structure
@@ -435,9 +453,12 @@ static void handleHadesQuery(Buffer* buffer) {
 		std::cerr << "Failed to start H1Z1_BE.exe" << std::endl;
 		return;
 	}
+
 	CloseHandle(processInfo.hProcess);
 	CloseHandle(processInfo.hThread);
 }
+
+static void handleRequestAssetHashesPacket(Buffer* buffer);
 static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 	Buffer buffer = {
 		(char*)data,
@@ -460,6 +481,9 @@ static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 			break;
 		case cPacketIdMessageBox:
 			handleMessageBoxPacket(&buffer);
+			break;
+		case cPacketIdRequestAssetHashes:
+			handleRequestAssetHashesPacket(&buffer);
 			break;
 		default:
 			printf("[ERROR] Unhandled h1emu custom packet %02x\n", opcode);
@@ -497,15 +521,27 @@ static void handleH1emuConsoleCommand() {
 	gameConsoleShowing = !gameConsoleShowing;
 }
 
+
 static void (*handleCommand_orig)(const char* commandPtr);
 static void handleCommand(const char* commandPtr) {
 	std::string command = commandPtr;
 	if (command == "console") {
 		handleH1emuConsoleCommand();
+			
+		std::string header = "!!h1custom!! 01";
+		const char* testCommand = header.append("H1Z1, originally known as H1Z1: Just Survive, was a popular multiplayer online survival game developed by Daybreak Game Company (formerly known as Sony Online Entertainment). The game's name was inspired by the H1N1 virus, but it had a zombie apocalypse theme. Released in January 2015, H1Z1 gained significant attention from the gaming community. It was an early entrant into the battle royale genre and later split into two separate games: H1Z1: Just Survive and H1Z1: King of the Kill. In H1Z1 : Just Survive, players found themselves in a post - apocalyptic world overrun by zombies.The primary goal was to gather resources, build shelters, and work together with other players to survive the relentless hordes of the undead.The game emphasized cooperationand strategy, as well as craftingand base - building.It was a challenge to stay alive in a world where supplies were limited, and threats could emerge at any moment. H1Z1 : King of the Kill, on the other hand, was Daybreak's take on the burgeoning battle royale genre. It pitted up to 150 players against each other in a last-person-standing competition. Players parachuted onto an island, scavenged for weapons and gear, and fought to be the sole survivor. H1Z1: King of the Kill had a more fast-paced and action-packed style compared to the original H1Z1, with an emphasis on gunplay, vehicular combat, and intense showdowns. Over time, the battle royale version of H1Z1 faced competition from other games in the genre like PUBGand Fortnite, which attracted larger player bases.Despite the decline in popularity, H1Z1 maintained a dedicated community of players who enjoyed its unique take on the battle royale formula. H1Z1's journey took an unexpected turn when it went free-to-play in March 2018, aiming to revitalize the player base and attract new users. This change significantly increased the number of players and breathed new life into the game. Along with the free-to-play model, H1Z1 introduced new features and updates to keep players engaged, but it still faced challenges from the ever-evolving battle royale landscape. In August 2018, the game was officially renamed Z1 Battle Royale, distancing itself from its H1Z1 roots, but maintaining the core battle royale gameplay.Despite the name changeand various updates, the game continued to struggle against stiff competition.Eventually, in 2019, NantG Mobile acquired the rights to Z1 Battle Royale, aiming to restore the game's original spirit. However, as of my knowledge cutoff date in September 2021, the game's future remained uncertain. H1Z1, with its origins as a pioneering battle royale title, played an essential role in the genre's development and popularity. While it faced ups and downs in its journey, its impact on the gaming world is undeniable, influencing the subsequent success of other battle royale games. The legacy of H1Z1 continues to be a part of the broader narrative of the battle royale genre's evolution.  H1Z1, originally known as H1Z1: Just Survive, was a popular multiplayer online survival game developed by Daybreak Game Company (formerly known as Sony Online Entertainment). The game's name was inspired by the H1N1 virus, but it had a zombie apocalypse theme. Released in January 2015, H1Z1 gained significant attention from the gaming community. It was an early entrant into the battle royale genre and later split into two separate games: H1Z1: Just Survive and H1Z1: King of the Kill. In H1Z1 : Just Survive, players found themselves in a post - apocalyptic world overrun by zombies.The primary goal was to gather resources, build shelters, and work together with other players to survive the relentless hordes of the undead.The game emphasized cooperationand strategy, as well as craftingand base - building.It was a challenge to stay alive in a world where supplies were limited, and threats could emerge at any moment. H1Z1 : King of the Kill, on the other hand, was Daybreak's take on the burgeoning battle royale genre. It pitted up to 150 players against each other in a last-person-standing competition. Players parachuted onto an island, scavenged for weapons and gear, and fought to be the sole survivor. H1Z1: King of the Kill had a more fast-paced and action-packed style compared to the original H1Z1, with an emphasis on gunplay, vehicular combat, and intense showdowns. Over time, the battle royale version of H1Z1 faced competition from other games in the genre like PUBGand Fortnite, which attracted larger player bases.Despite the decline in popularity, H1Z1 maintained a dedicated community of players who enjoyed its unique take on the battle royale formula. H1Z1's journey took an unexpected turn when it went free-to-play in March 2018, aiming to revitalize the player base and attract new users. This change significantly increased the number of players and breathed new life into the game. Along with the free-to-play model, H1Z1 introduced new features and updates to keep players engaged, but it still faced challenges from the ever-evolving battle royale landscape. In August 2018, the game was officially renamed Z1 Battle Royale, distancing itself from its H1Z1 roots, but maintaining the core battle royale gameplay.Despite the name changeand various updates, the game continued to struggle against stiff competition.Eventually, in 2019, NantG Mobile acquired the rights to Z1 Battle Royale, aiming to restore the game's original spirit. However, as of my knowledge cutoff date in September 2021, the game's future remained uncertain. H1Z1, with its origins as a pioneering battle royale title, played an essential role in the genre's development and popularity. While it faced ups and downs in its journey, its impact on the gaming world is undeniable, influencing the subsequent success of other battle royale games. The legacy of H1Z1 continues to be a part of the broader narrative of the battle royale genre's evolution.  H1Z1, originally known as H1Z1: Just Survive, was a popular multiplayer online survival game developed by Daybreak Game Company (formerly known as Sony Online Entertainment). The game's name was inspired by the H1N1 virus, but it had a zombie apocalypse theme. Released in January 2015, H1Z1 gained significant attention from the gaming community. It was an early entrant into the battle royale genre and later split into two separate games: H1Z1: Just Survive and H1Z1: King of the Kill. In H1Z1 : Just Survive, players found themselves in a post - apocalyptic world overrun by zombies.The primary goal was to gather resources, build shelters, and work together with other players to survive the relentless hordes of the undead.The game emphasized cooperationand strategy, as well as craftingand base - building.It was a challenge to stay alive in a world where supplies were limited, and threats could emerge at any moment. H1Z1 : King of the Kill, on the other hand, was Daybreak's take on the burgeoning battle royale genre. It pitted up to 150 players against each other in a last-person-standing competition. Players parachuted onto an island, scavenged for weapons and gear, and fought to be the sole survivor. H1Z1: King of the Kill had a more fast-paced and action-packed style compared to the original H1Z1, with an emphasis on gunplay, vehicular combat, and intense showdowns. Over time, the battle royale version of H1Z1 faced competition from other games in the genre like PUBGand Fortnite, which attracted larger player bases.Despite the decline in popularity, H1Z1 maintained a dedicated community of players who enjoyed its unique take on the battle royale formula. H1Z1's journey took an unexpected turn when it went free-to-play in March 2018, aiming to revitalize the player base and attract new users. This change significantly increased the number of players and breathed new life into the game. Along with the free-to-play model, H1Z1 introduced new features and updates to keep players engaged, but it still faced challenges from the ever-evolving battle royale landscape. In August 2018, the game was officially renamed Z1 Battle Royale, distancing itself from its H1Z1 roots, but maintaining the core battle royale gameplay.Despite the name changeand various updates, the game continued to struggle against stiff competition.Eventually, in 2019, NantG Mobile acquired the rights to Z1 Battle Royale, aiming to restore the game's original spirit. However, as of my knowledge cutoff date in September 2021, the game's future remained uncertain. H1Z1, with its origins as a pioneering battle royale title, played an essential role in the genre's development and popularity. While it faced ups and downs in its journey, its impact on the gaming world is undeniable, influencing the subsequent success of other battle royale games. The legacy of H1Z1 continues to be a part of the broader narrative of the battle royale genre's evolution.  H1Z1, originally known as H1Z1: Just Survive, was a popular multiplayer online survival game developed by Daybreak Game Company (formerly known as Sony Online Entertainment). The game's name was inspired by the H1N1 virus, but it had a zombie apocalypse theme. Released in January 2015, H1Z1 gained significant attention from the gaming community. It was an early entrant into the battle royale genre and later split into two separate games: H1Z1: Just Survive and H1Z1: King of the Kill. In H1Z1 : Just Survive, players found themselves in a post - apocalyptic world overrun by zombies.The primary goal was to gather resources, build shelters, and work together with other players to survive the relentless hordes of the undead.The game emphasized cooperationand strategy, as well as craftingand base - building.It was a challenge to stay alive in a world where supplies were limited, and threats could emerge at any moment. H1Z1 : King of the Kill, on the other hand, was Daybreak's take on the burgeoning battle royale genre. It pitted up to 150 players against each other in a last-person-standing competition. Players parachuted onto an island, scavenged for weapons and gear, and fought to be the sole survivor. H1Z1: King of the Kill had a more fast-paced and action-packed style compared to the original H1Z1, with an emphasis on gunplay, vehicular combat, and intense showdowns. Over time, the battle royale version of H1Z1 faced competition from other games in the genre like PUBGand Fortnite, which attracted larger player bases.Despite the decline in popularity, H1Z1 maintained a dedicated community of players who enjoyed its unique take on the battle royale formula. H1Z1's journey took an unexpected turn when it went free-to-play in March 2018, aiming to revitalize the player base and attract new users. This change significantly increased the number of players and breathed new life into the game. Along with the free-to-play model, H1Z1 introduced new features and updates to keep players engaged, but it still faced challenges from the ever-evolving battle royale landscape. In August 2018, the game was officially renamed Z1 Battle Royale, distancing itself from its H1Z1 roots, but maintaining the core battle royale gameplay.Despite the name changeand various updates, the game continued to struggle against stiff competition.Eventually, in 2019, NantG Mobile acquired the rights to Z1 Battle Royale, aiming to restore the game's original spirit. However, as of my knowledge cutoff date in September 2021, the game's future remained uncertain. H1Z1, with its origins as a pioneering battle royale title, played an essential role in the genre's development and popularity. While it faced ups and downs in its journey, its impact on the gaming world is undeniable, influencing the subsequent success of other battle royale games. The legacy of H1Z1 continues to be a part of the broader narrative of the battle royale genre's evolution.").c_str();
+		handleCommand_orig(testCommand);
+
 		return;
 	}
+
+	if (command == "!!h1custom!!") {
+		return;
+	}
+
 	handleCommand_orig(commandPtr);
 }
+
 
 static void handleH1emuLoginPackets(Buffer* buffer, int bufferLen) {
 	char opcode = 0;
@@ -872,6 +908,91 @@ static void sendGroupJoinPacket(void* a1, char joinState) {
 	sendGroupJoinPacket_orig(a1, joinState);
 }
 
+void CreateAssetValidatorPipe() {
+	// Parent process code to set up a named pipe for communication
+	HANDLE hPipe;
+	DWORD bytesRead;
+
+	// max buffer size for received hashes
+	DWORD inBufferSize = 20000; // Initial buffer size
+	DWORD outBufferSize = 20000; // Initial buffer size
+
+	// Create the named pipe with initial buffer sizes
+	hPipe = CreateNamedPipe(
+		TEXT("\\\\.\\pipe\\AssetValidator"),
+		PIPE_ACCESS_DUPLEX,
+		PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+		1,
+		outBufferSize, // Set the output buffer size
+		inBufferSize,  // Set the input buffer size
+		NMPWAIT_USE_DEFAULT_WAIT,
+		NULL
+	);
+
+	if (hPipe == INVALID_HANDLE_VALUE) {
+		printf("Failed to create named pipe for AssetValidator");
+		return;
+	}
+
+	printf("Waiting for the child process to connect to the named pipe AssetValidator...");
+	ConnectNamedPipe(hPipe, NULL);
+
+	// Dynamically determine the size of incoming data and adjust buffer sizes if needed
+	if (ReadFile(hPipe, NULL, 0, &bytesRead, NULL)) {
+		// bytesRead now contains the size of the incoming data
+		inBufferSize = bytesRead;
+		outBufferSize = bytesRead; // You can adjust the output buffer size as well
+
+		// Close the existing named pipe
+		CloseHandle(hPipe);
+
+		// Recreate the named pipe with adjusted buffer sizes
+		hPipe = CreateNamedPipe(
+			TEXT("\\\\.\\pipe\\AssetValidator"),
+			PIPE_ACCESS_DUPLEX,
+			PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+			1,
+			outBufferSize,
+			inBufferSize,
+			NMPWAIT_USE_DEFAULT_WAIT,
+			NULL
+		);
+	}
+
+	char* buf = new char[inBufferSize]; // Create a buffer with the updated size
+
+	// Read data from the child process through the named pipe
+	if (ReadFile(hPipe, buf, inBufferSize, &bytesRead, NULL)) {
+		buf[bytesRead] = '\0';
+		std::string hashes(buf);
+
+		printf("[AssetValidator] Received file hashes\n");
+
+		assetHashes = hashes;
+
+		// TODO - CHECK IF CONNECTED TO A SERVER FIRST BEFORE SENDING
+
+		std::string header = "!!h1custom!! 01";
+		header.append(hashes);
+		handleCommand_orig(header.c_str());
+	}
+	else {
+		printf("ReadFile failed for AssetValidator\n");
+	}
+
+	// Close the named pipe and release the dynamically allocated buffer
+	CloseHandle(hPipe);
+	delete[] buf;
+}
+
+static void handleRequestAssetHashesPacket(Buffer* buffer) {
+	printf("RequestAssetHashes received from server");
+	if (assetHashes.length() > 0) {
+		std::string header = "!!h1custom!! 01";
+		header.append(assetHashes);
+		handleCommand_orig(header.c_str());
+	}
+}
 
 bool VCPatcher::Init()
 {
@@ -913,8 +1034,6 @@ bool VCPatcher::Init()
 	
 	MH_CreateHook((char*)0x14133F230, handleCommand, (void**)&handleCommand_orig);
 
-	
-
 	// ####################     Debug hooks     ####################
 	#ifdef CONSOLE_ENABLED
 
@@ -922,79 +1041,76 @@ bool VCPatcher::Init()
 
 
 
-	MH_CreateHook((char*)0x140B339D0, GetIsContainer, (void**)&GetIsContainer_orig);
+	//MH_CreateHook((char*)0x140B339D0, GetIsContainer, (void**)&GetIsContainer_orig);
 
-	MH_CreateHook((char*)0x14178F530, LoadoutIdValidate, (void**)&LoadoutIdValidate_orig);
+	//MH_CreateHook((char*)0x14178F530, LoadoutIdValidate, (void**)&LoadoutIdValidate_orig);
 
 	
-	MH_CreateHook((char*)0x141787620, GetItemErrorMessage, (void**)&GetItemErrorMessage_orig);
+	//MH_CreateHook((char*)0x141787620, GetItemErrorMessage, (void**)&GetItemErrorMessage_orig);
 
-	MH_CreateHook((char*)0x1405B9680, GetItemErrorMessageReturn, (void**)&GetItemErrorMessageReturn_orig);
+	//MH_CreateHook((char*)0x1405B9680, GetItemErrorMessageReturn, (void**)&GetItemErrorMessageReturn_orig);
 
-	MH_CreateHook((char*)0x1405BC490, GetItemErrorMessageReturnReturn, (void**)&GetItemErrorMessageReturnReturn_orig);
+	//MH_CreateHook((char*)0x1405BC490, GetItemErrorMessageReturnReturn, (void**)&GetItemErrorMessageReturnReturn_orig);
 
-	MH_CreateHook((char*)0x140B27400, sub_140B27400, (void**)&sub_140B27400_orig);
+	//MH_CreateHook((char*)0x140B27400, sub_140B27400, (void**)&sub_140B27400_orig);
 
-	MH_CreateHook((char*)0x1405FE160, sub_1405FE160, (void**)&sub_1405FE160_orig);
+	//MH_CreateHook((char*)0x1405FE160, sub_1405FE160, (void**)&sub_1405FE160_orig);
 
 	// ACCESSEDCHARACTERBASE HOOKS
 
-	MH_CreateHook((char*)0x140602BE0, BeginCharacterAccessRead, (void**)&BeginCharacterAccessRead_orig);
-
-	MH_CreateHook((char*)0x140374DF0, ItemsReadFunc, (void**)&ItemsReadFunc_orig);
-
-	MH_CreateHook((char*)0x140BAA8C0, sub_140BAA8C0, (void**)&sub_140BAA8C0_orig);
+	//MH_CreateHook((char*)0x140602BE0, BeginCharacterAccessRead, (void**)&BeginCharacterAccessRead_orig);
+	//MH_CreateHook((char*)0x140374DF0, ItemsReadFunc, (void**)&ItemsReadFunc_orig);
+	//MH_CreateHook((char*)0x140BAA8C0, sub_140BAA8C0, (void**)&sub_140BAA8C0_orig);
 
 	// CONSTRUCTION HOOKS:
 
-	MH_CreateHook((char*)0x140773B60, ConstructionPlacementFinalizePacket, (void**)&ConstructionPlacementFinalizePacket_orig);
+	//MH_CreateHook((char*)0x140773B60, ConstructionPlacementFinalizePacket, (void**)&ConstructionPlacementFinalizePacket_orig);
 
 	// INVENTORY HOOKS:
 
-	MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
-
-	MH_CreateHook((char*)0x140630DA0, HandleItemAddData, (void**)&HandleItemAddData_orig);
-
-	MH_CreateHook((char*)0x14049DBD0, ClientPlayerItemManager__CreateItem, (void**)&ClientPlayerItemManager__CreateItem_orig);
-	
-	MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
+	//MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
+	//MH_CreateHook((char*)0x140630DA0, HandleItemAddData, (void**)&HandleItemAddData_orig);
+	//MH_CreateHook((char*)0x14049DBD0, ClientPlayerItemManager__CreateItem, (void**)&ClientPlayerItemManager__CreateItem_orig);
+	//MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
 	
 	// LOADOUT HOOKS:
 
-	MH_CreateHook((char*)0x1405C9770, loadoutBaseRead, (void**)&loadoutBaseRead_orig);
-	MH_CreateHook((char*)0x1405C9970, loadoutSelectLoadoutRead, (void**)&loadoutSelectLoadoutRead_orig);
-	MH_CreateHook((char*)0x1405C9BF0, loadoutSetCurrentLoadoutRead, (void**)&loadoutSetCurrentLoadoutRead_orig);
-	MH_CreateHook((char*)0x1405C9E80, loadoutSelectSlotRead, (void**)&loadoutSelectSlotRead_orig);
+	//MH_CreateHook((char*)0x1405C9770, loadoutBaseRead, (void**)&loadoutBaseRead_orig);
+	//MH_CreateHook((char*)0x1405C9970, loadoutSelectLoadoutRead, (void**)&loadoutSelectLoadoutRead_orig);
+	//MH_CreateHook((char*)0x1405C9BF0, loadoutSetCurrentLoadoutRead, (void**)&loadoutSetCurrentLoadoutRead_orig);
+	//MH_CreateHook((char*)0x1405C9E80, loadoutSelectSlotRead, (void**)&loadoutSelectSlotRead_orig);
 	
 	// CONTAINER HOOKS:
 
-	MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
-	MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
-	MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
+	//MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
+	//MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
+	//MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
 
 	
-	MH_CreateHook((char*)0x140447B70, sub_140447B70, (void**)&sub_140447B70_orig);
-	MH_CreateHook((char*)0x1405FC580, sub_1405FC580, (void**)&sub_1405FC580_orig);
+	//MH_CreateHook((char*)0x140447B70, sub_140447B70, (void**)&sub_140447B70_orig);
+	//MH_CreateHook((char*)0x1405FC580, sub_1405FC580, (void**)&sub_1405FC580_orig);
 
-	MH_CreateHook((char*)0x1417543E0, GetContainerDefinition, (void**)&GetContainerDefinition_orig);
+	//MH_CreateHook((char*)0x1417543E0, GetContainerDefinition, (void**)&GetContainerDefinition_orig);
 
 	// EQUIPMENT HOOKS:
 
-	MH_CreateHook((char*)0x1405819A0, equipmentEventBase, (void**)&equipmentEventBase_orig);
-	MH_CreateHook((char*)0x140582110, setCharacterEquipmentSlot, (void**)&setCharacterEquipmentSlot_orig);
+	//MH_CreateHook((char*)0x1405819A0, equipmentEventBase, (void**)&equipmentEventBase_orig);
+	//MH_CreateHook((char*)0x140582110, setCharacterEquipmentSlot, (void**)&setCharacterEquipmentSlot_orig);
 	
 	//Other
 
-	MH_CreateHook((char*)0x1403FD710, SpawnLightweightPc, (void**)&SpawnLightweightPc_orig);
-	
-	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
-	
+	// MH_CreateHook((char*)0x1403FD710, SpawnLightweightPc, (void**)&SpawnLightweightPc_orig);
 	
 	//Logging
-	MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); //hook absolutely every logging function
+
+	tryAllocConsole();
+
+	//MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
+
+	//MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); //hook absolutely every logging function
 
 	// logs usually written to a file
-	MH_CreateHook((char*)0x14032FA90, writeToLog, (void**)&writeToLog_orig); //hook absolutely every file logging function
+	//MH_CreateHook((char*)0x14032FA90, writeToLog, (void**)&writeToLog_orig); //hook absolutely every file logging function
 
 	
 
@@ -1003,6 +1119,8 @@ bool VCPatcher::Init()
 	// ###################################################     End of game hooks     ############################################################
 
 	MH_EnableHook(MH_ALL_HOOKS);
+
+	CreateAssetValidatorPipe();
 
 	return true;
 }

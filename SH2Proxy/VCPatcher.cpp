@@ -966,11 +966,9 @@ void CreateAssetValidatorPipe() {
 		buf[bytesRead] = '\0';
 		std::string hashes(buf);
 
-		printf("[AssetValidator] Received file hashes\n");
+		printf("[AssetValidator] Finished with file hashes\n");
 
 		assetHashes = hashes;
-
-		// TODO - CHECK IF CONNECTED TO A SERVER FIRST BEFORE SENDING
 
 		std::string header = "!!h1custom!! 01";
 		header.append(hashes);
@@ -1103,16 +1101,14 @@ bool VCPatcher::Init()
 	
 	//Logging
 
-	tryAllocConsole();
+	//tryAllocConsole();
 
-	//MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
+	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
 
-	//MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); //hook absolutely every logging function
+	MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); //hook absolutely every logging function
 
 	// logs usually written to a file
-	//MH_CreateHook((char*)0x14032FA90, writeToLog, (void**)&writeToLog_orig); //hook absolutely every file logging function
-
-	
+	MH_CreateHook((char*)0x14032FA90, writeToLog, (void**)&writeToLog_orig); //hook absolutely every file logging function
 
 	#endif
 	

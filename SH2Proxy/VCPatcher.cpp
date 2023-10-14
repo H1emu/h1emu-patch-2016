@@ -26,6 +26,7 @@ static bool gameConsoleShowing = false;
 static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, void* a3, void* a4);
 
 std::string assetHashes = "";
+bool pendingAssetCheck = false;
 
 void* ConsoleRelated = nullptr;
 
@@ -422,6 +423,16 @@ static void handleHadesQuery(Buffer* buffer) {
 
 	if (buffer->failFlag) return;
 
+	if (pendingAssetCheck) {
+		printf("[AssetValidator] Ignoring query due to pending check.\n");
+		return;
+	}
+
+	if (assetHashes.length() > 1) {
+		printf("[AssetValidator] Ignoring query due to cached assets.\n");
+		return;
+	}
+
 	printf("\n\n\n --------- hades query\n\n");
 	std::string executablePath = ".\\H1Z1_BE.exe";
 	std::string commandLine = executablePath + " -assetcheck " + authTicket + " " + gatewayServer;
@@ -456,6 +467,8 @@ static void handleHadesQuery(Buffer* buffer) {
 
 	CloseHandle(processInfo.hProcess);
 	CloseHandle(processInfo.hThread);
+
+	pendingAssetCheck = true;
 }
 
 static void handleRequestAssetHashesPacket(Buffer* buffer);
@@ -527,14 +540,10 @@ static void handleCommand(const char* commandPtr) {
 	std::string command = commandPtr;
 	if (command == "console") {
 		handleH1emuConsoleCommand();
-			
-		std::string header = "!!h1custom!! 01";
-		const char* testCommand = header.append("H1Z1, originally known as H1Z1: Just Survive, was a popular multiplayer online survival game developed by Daybreak Game Company (formerly known as Sony Online Entertainment). The game's name was inspired by the H1N1 virus, but it had a zombie apocalypse theme. Released in January 2015, H1Z1 gained significant attention from the gaming community. It was an early entrant into the battle royale genre and later split into two separate games: H1Z1: Just Survive and H1Z1: King of the Kill. In H1Z1 : Just Survive, players found themselves in a post - apocalyptic world overrun by zombies.The primary goal was to gather resources, build shelters, and work together with other players to survive the relentless hordes of the undead.The game emphasized cooperationand strategy, as well as craftingand base - building.It was a challenge to stay alive in a world where supplies were limited, and threats could emerge at any moment. H1Z1 : King of the Kill, on the other hand, was Daybreak's take on the burgeoning battle royale genre. It pitted up to 150 players against each other in a last-person-standing competition. Players parachuted onto an island, scavenged for weapons and gear, and fought to be the sole survivor. H1Z1: King of the Kill had a more fast-paced and action-packed style compared to the original H1Z1, with an emphasis on gunplay, vehicular combat, and intense showdowns. Over time, the battle royale version of H1Z1 faced competition from other games in the genre like PUBGand Fortnite, which attracted larger player bases.Despite the decline in popularity, H1Z1 maintained a dedicated community of players who enjoyed its unique take on the battle royale formula. H1Z1's journey took an unexpected turn when it went free-to-play in March 2018, aiming to revitalize the player base and attract new users. This change significantly increased the number of players and breathed new life into the game. Along with the free-to-play model, H1Z1 introduced new features and updates to keep players engaged, but it still faced challenges from the ever-evolving battle royale landscape. In August 2018, the game was officially renamed Z1 Battle Royale, distancing itself from its H1Z1 roots, but maintaining the core battle royale gameplay.Despite the name changeand various updates, the game continued to struggle against stiff competition.Eventually, in 2019, NantG Mobile acquired the rights to Z1 Battle Royale, aiming to restore the game's original spirit. However, as of my knowledge cutoff date in September 2021, the game's future remained uncertain. H1Z1, with its origins as a pioneering battle royale title, played an essential role in the genre's development and popularity. While it faced ups and downs in its journey, its impact on the gaming world is undeniable, influencing the subsequent success of other battle royale games. The legacy of H1Z1 continues to be a part of the broader narrative of the battle royale genre's evolution.  H1Z1, originally known as H1Z1: Just Survive, was a popular multiplayer online survival game developed by Daybreak Game Company (formerly known as Sony Online Entertainment). The game's name was inspired by the H1N1 virus, but it had a zombie apocalypse theme. Released in January 2015, H1Z1 gained significant attention from the gaming community. It was an early entrant into the battle royale genre and later split into two separate games: H1Z1: Just Survive and H1Z1: King of the Kill. In H1Z1 : Just Survive, players found themselves in a post - apocalyptic world overrun by zombies.The primary goal was to gather resources, build shelters, and work together with other players to survive the relentless hordes of the undead.The game emphasized cooperationand strategy, as well as craftingand base - building.It was a challenge to stay alive in a world where supplies were limited, and threats could emerge at any moment. H1Z1 : King of the Kill, on the other hand, was Daybreak's take on the burgeoning battle royale genre. It pitted up to 150 players against each other in a last-person-standing competition. Players parachuted onto an island, scavenged for weapons and gear, and fought to be the sole survivor. H1Z1: King of the Kill had a more fast-paced and action-packed style compared to the original H1Z1, with an emphasis on gunplay, vehicular combat, and intense showdowns. Over time, the battle royale version of H1Z1 faced competition from other games in the genre like PUBGand Fortnite, which attracted larger player bases.Despite the decline in popularity, H1Z1 maintained a dedicated community of players who enjoyed its unique take on the battle royale formula. H1Z1's journey took an unexpected turn when it went free-to-play in March 2018, aiming to revitalize the player base and attract new users. This change significantly increased the number of players and breathed new life into the game. Along with the free-to-play model, H1Z1 introduced new features and updates to keep players engaged, but it still faced challenges from the ever-evolving battle royale landscape. In August 2018, the game was officially renamed Z1 Battle Royale, distancing itself from its H1Z1 roots, but maintaining the core battle royale gameplay.Despite the name changeand various updates, the game continued to struggle against stiff competition.Eventually, in 2019, NantG Mobile acquired the rights to Z1 Battle Royale, aiming to restore the game's original spirit. However, as of my knowledge cutoff date in September 2021, the game's future remained uncertain. H1Z1, with its origins as a pioneering battle royale title, played an essential role in the genre's development and popularity. While it faced ups and downs in its journey, its impact on the gaming world is undeniable, influencing the subsequent success of other battle royale games. The legacy of H1Z1 continues to be a part of the broader narrative of the battle royale genre's evolution.  H1Z1, originally known as H1Z1: Just Survive, was a popular multiplayer online survival game developed by Daybreak Game Company (formerly known as Sony Online Entertainment). The game's name was inspired by the H1N1 virus, but it had a zombie apocalypse theme. Released in January 2015, H1Z1 gained significant attention from the gaming community. It was an early entrant into the battle royale genre and later split into two separate games: H1Z1: Just Survive and H1Z1: King of the Kill. In H1Z1 : Just Survive, players found themselves in a post - apocalyptic world overrun by zombies.The primary goal was to gather resources, build shelters, and work together with other players to survive the relentless hordes of the undead.The game emphasized cooperationand strategy, as well as craftingand base - building.It was a challenge to stay alive in a world where supplies were limited, and threats could emerge at any moment. H1Z1 : King of the Kill, on the other hand, was Daybreak's take on the burgeoning battle royale genre. It pitted up to 150 players against each other in a last-person-standing competition. Players parachuted onto an island, scavenged for weapons and gear, and fought to be the sole survivor. H1Z1: King of the Kill had a more fast-paced and action-packed style compared to the original H1Z1, with an emphasis on gunplay, vehicular combat, and intense showdowns. Over time, the battle royale version of H1Z1 faced competition from other games in the genre like PUBGand Fortnite, which attracted larger player bases.Despite the decline in popularity, H1Z1 maintained a dedicated community of players who enjoyed its unique take on the battle royale formula. H1Z1's journey took an unexpected turn when it went free-to-play in March 2018, aiming to revitalize the player base and attract new users. This change significantly increased the number of players and breathed new life into the game. Along with the free-to-play model, H1Z1 introduced new features and updates to keep players engaged, but it still faced challenges from the ever-evolving battle royale landscape. In August 2018, the game was officially renamed Z1 Battle Royale, distancing itself from its H1Z1 roots, but maintaining the core battle royale gameplay.Despite the name changeand various updates, the game continued to struggle against stiff competition.Eventually, in 2019, NantG Mobile acquired the rights to Z1 Battle Royale, aiming to restore the game's original spirit. However, as of my knowledge cutoff date in September 2021, the game's future remained uncertain. H1Z1, with its origins as a pioneering battle royale title, played an essential role in the genre's development and popularity. While it faced ups and downs in its journey, its impact on the gaming world is undeniable, influencing the subsequent success of other battle royale games. The legacy of H1Z1 continues to be a part of the broader narrative of the battle royale genre's evolution.  H1Z1, originally known as H1Z1: Just Survive, was a popular multiplayer online survival game developed by Daybreak Game Company (formerly known as Sony Online Entertainment). The game's name was inspired by the H1N1 virus, but it had a zombie apocalypse theme. Released in January 2015, H1Z1 gained significant attention from the gaming community. It was an early entrant into the battle royale genre and later split into two separate games: H1Z1: Just Survive and H1Z1: King of the Kill. In H1Z1 : Just Survive, players found themselves in a post - apocalyptic world overrun by zombies.The primary goal was to gather resources, build shelters, and work together with other players to survive the relentless hordes of the undead.The game emphasized cooperationand strategy, as well as craftingand base - building.It was a challenge to stay alive in a world where supplies were limited, and threats could emerge at any moment. H1Z1 : King of the Kill, on the other hand, was Daybreak's take on the burgeoning battle royale genre. It pitted up to 150 players against each other in a last-person-standing competition. Players parachuted onto an island, scavenged for weapons and gear, and fought to be the sole survivor. H1Z1: King of the Kill had a more fast-paced and action-packed style compared to the original H1Z1, with an emphasis on gunplay, vehicular combat, and intense showdowns. Over time, the battle royale version of H1Z1 faced competition from other games in the genre like PUBGand Fortnite, which attracted larger player bases.Despite the decline in popularity, H1Z1 maintained a dedicated community of players who enjoyed its unique take on the battle royale formula. H1Z1's journey took an unexpected turn when it went free-to-play in March 2018, aiming to revitalize the player base and attract new users. This change significantly increased the number of players and breathed new life into the game. Along with the free-to-play model, H1Z1 introduced new features and updates to keep players engaged, but it still faced challenges from the ever-evolving battle royale landscape. In August 2018, the game was officially renamed Z1 Battle Royale, distancing itself from its H1Z1 roots, but maintaining the core battle royale gameplay.Despite the name changeand various updates, the game continued to struggle against stiff competition.Eventually, in 2019, NantG Mobile acquired the rights to Z1 Battle Royale, aiming to restore the game's original spirit. However, as of my knowledge cutoff date in September 2021, the game's future remained uncertain. H1Z1, with its origins as a pioneering battle royale title, played an essential role in the genre's development and popularity. While it faced ups and downs in its journey, its impact on the gaming world is undeniable, influencing the subsequent success of other battle royale games. The legacy of H1Z1 continues to be a part of the broader narrative of the battle royale genre's evolution.").c_str();
-		handleCommand_orig(testCommand);
-
 		return;
 	}
 
+	// flag used for sending custom packets from the client
 	if (command == "!!h1custom!!") {
 		return;
 	}
@@ -559,7 +568,7 @@ static void handleH1emuLoginPackets(Buffer* buffer, int bufferLen) {
 		handleMessageBoxPacket(buffer);
 		break;
 	case cLoginPacketIdInitHades:
-		handleHadesInit(buffer);
+		//handleHadesInit(buffer);
 		break;
 	case cLoginPacketIdHadesQuery:
 		handleHadesQuery(buffer);
@@ -595,12 +604,6 @@ static void handleIncomingLoginPackets(void* thisPtr, DataLoadByPacket* data, in
 	}
 	handleIncomingLoginPackets_orig(thisPtr, data, bufferLen, callback);
 }
-
-
-
-
-
-
 
 static void executeLuaFuncStub(void* LuaVM, char* funcName, void* a3, void* a4) {
 	// set global LuaVM ptr
@@ -930,11 +933,11 @@ void CreateAssetValidatorPipe() {
 	);
 
 	if (hPipe == INVALID_HANDLE_VALUE) {
-		printf("Failed to create named pipe for AssetValidator");
+		printf("Failed to create named pipe for AssetValidator\n");
 		return;
 	}
 
-	printf("Waiting for the child process to connect to the named pipe AssetValidator...");
+	printf("Waiting for the child process to connect to the named pipe AssetValidator...\n");
 	ConnectNamedPipe(hPipe, NULL);
 
 	// Dynamically determine the size of incoming data and adjust buffer sizes if needed
@@ -981,10 +984,11 @@ void CreateAssetValidatorPipe() {
 	// Close the named pipe and release the dynamically allocated buffer
 	CloseHandle(hPipe);
 	delete[] buf;
+	pendingAssetCheck = false;
 }
 
 static void handleRequestAssetHashesPacket(Buffer* buffer) {
-	printf("RequestAssetHashes received from server");
+	printf("RequestAssetHashes received from server\n");
 	if (assetHashes.length() > 0) {
 		std::string header = "!!h1custom!! 01";
 		header.append(assetHashes);

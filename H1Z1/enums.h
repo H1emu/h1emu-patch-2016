@@ -36,7 +36,9 @@ enum ClientStates {
 enum H1emuPackets {
 	cPacketIdPrintToConsole = 0x01,
 	cPacketIdMessageBox = 0x02,
-	cPacketIdRequestAssetHashes = 0x03
+	cPacketIdRequestAssetHashes = 0x03,
+	cPacketIdVoiceState = 0x04,
+	cPacketIdVoiceInit = 0x05
 };
 
 enum H1emuLoginPackets {

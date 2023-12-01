@@ -12,6 +12,7 @@
 #include "../H1Z1/enums.h"
 
 #define CONSOLE_ENABLED
+#define VOICE_PIPE L"\\\\.\\pipe\\VoiceV2"
 
 using namespace std;
 
@@ -470,7 +471,68 @@ static void handleHadesQuery(Buffer* buffer) {
 
 	pendingAssetCheck = true;
 }
+static void handleInitVoice(Buffer* buffer) {
+	std::string authTicket;
+	ReadStringFromBuffer(*buffer, authTicket);
 
+	if (buffer->failFlag) return;
+ 
+	printf("\n\n\n --------- vcinit\n\n");
+	std::string executablePath = ".\\H1EmuVoice\\H1EmuVoice.exe";
+	std::string commandLine = executablePath;
+
+	STARTUPINFOA startupInfo;
+	PROCESS_INFORMATION processInfo;
+
+	ZeroMemory(&startupInfo, sizeof(startupInfo));
+	startupInfo.cb = sizeof(startupInfo);
+
+	int consoleFlag = CREATE_NO_WINDOW;
+#ifdef CONSOLE_ENABLED
+	consoleFlag = 0;
+#endif
+
+	if (!CreateProcessA(
+		executablePath.c_str(),             // Path to the executable
+		const_cast<LPSTR>(commandLine.c_str()),  // Command line arguments
+		NULL,                               // Process handle not inheritable
+		NULL,                               // Thread handle not inheritable
+		FALSE,                              // Set handle inheritance to FALSE
+		consoleFlag,                        // Create a new console window CREATE_NO_WINDOW
+		NULL,                               // Use parent's environment block
+		NULL,                               // Use parent's starting directory
+		&startupInfo,                       // Pointer to STARTUPINFO structure
+		&processInfo                        // Pointer to PROCESS_INFORMATION structure
+	))
+	{
+		std::cerr << "Failed to start H1EmuVoice.exe" << std::endl;
+		return;
+	}
+
+	CloseHandle(processInfo.hProcess);
+	CloseHandle(processInfo.hThread);
+
+ }
+void handleVoiceStatePacket(Buffer* buffer) {
+	std::string message;
+	ReadStringFromBuffer(*buffer, message);
+	std::cout << "[VOICE V2] command: PASSTHROUGH, data: " << message << std::endl;
+
+	if (buffer->failFlag) return;
+
+	HANDLE hPipe;
+	DWORD bytesWritten;
+
+	hPipe = CreateFile(TEXT("\\\\.\\pipe\\VoiceV2"), GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+
+	if (hPipe != INVALID_HANDLE_VALUE) {
+		WriteFile(hPipe, message.c_str(), message.length(), &bytesWritten, NULL);
+		CloseHandle(hPipe);
+	}
+	else {
+		printf("[EmuEye] Failed to open named pipe in child process\n");
+	}
+}
 static void handleRequestAssetHashesPacket(Buffer* buffer);
 static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 	Buffer buffer = {
@@ -497,6 +559,12 @@ static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 			break;
 		case cPacketIdRequestAssetHashes:
 			handleRequestAssetHashesPacket(&buffer);
+			break;
+		case cPacketIdVoiceState:
+			handleVoiceStatePacket(&buffer);
+			break;
+		case cPacketIdVoiceInit:
+			handleInitVoice(&buffer);
 			break;
 		default:
 			printf("[ERROR] Unhandled h1emu custom packet %02x\n", opcode);

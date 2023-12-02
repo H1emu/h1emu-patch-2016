@@ -11,7 +11,8 @@
 #include "../H1Z1/H1Z1.exe.h"
 #include "../H1Z1/enums.h"
 
-#define CONSOLE_ENABLED
+ #define CONSOLE_ENABLED
+#define VOICE_PIPE L"\\\\.\\pipe\\VoiceV2"
 
 using namespace std;
 
@@ -27,7 +28,7 @@ static void(*executeLuaFunc_orig)(void* LuaVM, char* funcName, void* a3, void* a
 
 std::string assetHashes = "";
 bool pendingAssetCheck = false;
-
+int voiceErrorCount = 0;
 void* ConsoleRelated = nullptr;
 
 void hexDump(const char* desc, const void* addr, const int len);
@@ -471,6 +472,104 @@ static void handleHadesQuery(Buffer* buffer) {
 	pendingAssetCheck = true;
 }
 
+static void handleH1emuConsoleCommand() {
+	if (!L) return;
+
+	executeLuaFunc_orig(L, gameConsoleShowing ? "Console:Hide" : "Console:Show", 0, 0);
+	gameConsoleShowing = !gameConsoleShowing;
+}
+
+
+static void (*handleCommand_orig)(const char* commandPtr);
+static void handleCommand(const char* commandPtr) {
+	std::string command = commandPtr;
+	if (command == "console") {
+		handleH1emuConsoleCommand();
+		return;
+	}
+
+	// flag used for sending custom packets from the client
+	if (command == "!!h1custom!!") {
+		return;
+	}
+
+	handleCommand_orig(commandPtr);
+}
+
+static void handleInitVoice(Buffer* buffer) {
+	std::string authTicket;
+	ReadStringFromBuffer(*buffer, authTicket);
+
+	if (buffer->failFlag) return;
+ 
+	printf("\n\n\n --------- vcinit\n\n");
+	std::string executablePath = ".\\H1EmuVoice\\H1EmuVoice.exe";
+	std::string commandLine = executablePath;
+
+	STARTUPINFOA startupInfo;
+	PROCESS_INFORMATION processInfo;
+
+	ZeroMemory(&startupInfo, sizeof(startupInfo));
+	startupInfo.cb = sizeof(startupInfo);
+	startupInfo.dwFlags |= STARTF_USESTDHANDLES; // Set the flag to indicate valid handles
+
+	// Set this flag to TRUE for explicit inheritance
+
+	int consoleFlag = CREATE_NO_WINDOW;
+#ifdef CONSOLE_ENABLED
+	consoleFlag = 0;
+#endif
+
+	if (!CreateProcessA(
+		executablePath.c_str(),             // Path to the executable
+		const_cast<LPSTR>(commandLine.c_str()),  // Command line arguments
+		NULL,                               // Process handle not inheritable
+		NULL,                               // Thread handle not inheritable
+		FALSE,                              // Set handle inheritance to FALSE
+		consoleFlag,                        // Create a new console window CREATE_NO_WINDOW
+		NULL,                               // Use parent's environment block
+		NULL,                               // Use parent's starting directory
+		&startupInfo,                       // Pointer to STARTUPINFO structure
+		&processInfo                        // Pointer to PROCESS_INFORMATION structure
+	))
+	{
+		std::cerr << "Failed to start H1EmuVoice.exe" << std::endl;
+		std::string header = "!!h1custom!! 02starterror";
+		handleCommand_orig(header.c_str());
+		return;
+	}
+
+	CloseHandle(processInfo.hProcess);
+	CloseHandle(processInfo.hThread);
+
+ }
+void handleVoiceStatePacket(Buffer* buffer) {
+	std::string message;
+	ReadStringFromBuffer(*buffer, message);
+	std::cout << "[VOICE V2] command: PASSTHROUGH, data: " << message << std::endl;
+
+	if (buffer->failFlag) return;
+
+	HANDLE hPipe;
+	DWORD bytesWritten;
+
+	hPipe = CreateFile(TEXT("\\\\.\\pipe\\VoiceV2"), GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+
+	if (hPipe != INVALID_HANDLE_VALUE) {
+		WriteFile(hPipe, message.c_str(), message.length(), &bytesWritten, NULL);
+		CloseHandle(hPipe);
+	}
+	else {
+		printf("[VoiceV2] Failed to open named pipe in child process\n");
+		if (voiceErrorCount > 50) {
+			std::string header = "!!h1custom!! 02pipeerror";
+			handleCommand_orig(header.c_str());
+			voiceErrorCount = 0;
+		}
+		voiceErrorCount++;
+
+	}
+}
 static void handleRequestAssetHashesPacket(Buffer* buffer);
 static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 	Buffer buffer = {
@@ -497,6 +596,12 @@ static void handleH1emuCustomPackets(DataLoadByPacket* data, int bufferLen) {
 			break;
 		case cPacketIdRequestAssetHashes:
 			handleRequestAssetHashesPacket(&buffer);
+			break;
+		case cPacketIdVoiceState:
+			handleVoiceStatePacket(&buffer);
+			break;
+		case cPacketIdVoiceInit:
+			handleInitVoice(&buffer);
 			break;
 		default:
 			printf("[ERROR] Unhandled h1emu custom packet %02x\n", opcode);
@@ -525,30 +630,6 @@ static void handleIncomingZonePackets(BaseClient* thisPtr, IncomingPacket* packe
 			break;
 	}
 	handleIncomingZonePackets_orig(thisPtr, packet, buffer, bufferLen, time, a6);
-}
-
-static void handleH1emuConsoleCommand() {
-	if (!L) return;
-
-	executeLuaFunc_orig(L, gameConsoleShowing ? "Console:Hide" : "Console:Show", 0, 0);
-	gameConsoleShowing = !gameConsoleShowing;
-}
-
-
-static void (*handleCommand_orig)(const char* commandPtr);
-static void handleCommand(const char* commandPtr) {
-	std::string command = commandPtr;
-	if (command == "console") {
-		handleH1emuConsoleCommand();
-		return;
-	}
-
-	// flag used for sending custom packets from the client
-	if (command == "!!h1custom!!") {
-		return;
-	}
-
-	handleCommand_orig(commandPtr);
 }
 
 

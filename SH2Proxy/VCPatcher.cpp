@@ -11,7 +11,13 @@
 #include "../H1Z1/H1Z1.exe.h"
 #include "../H1Z1/enums.h"
 
+// Production hygiene: only open the debug console / enable base-patch logging in Debug builds.
+// Release defines NDEBUG (not _DEBUG) -> CONSOLE_ENABLED stays undefined -> no AllocConsole, all
+// #ifdef CONSOLE_ENABLED debug blocks compile out, and the #ifndef CONSOLE_ENABLED early-returns
+// (doSomeLogging / hexDump) make logging a silent no-op. Emote/NV hooks run regardless (not gated on this).
+#ifdef _DEBUG
 #define CONSOLE_ENABLED
+#endif
 
 using namespace std;
 

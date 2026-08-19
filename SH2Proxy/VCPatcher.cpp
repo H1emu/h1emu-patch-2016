@@ -1049,243 +1049,180 @@ typedef void(__fastcall* LocalCharacter_PlayAnimationAndRequest_t)(void* a0, int
 // NV: AbilityStore_LookupByNameHash @0x140565740 — resolves the ability instance for a nameHash.
 typedef void*(__fastcall* AbilityStore_LookupByNameHash_t)(void* store, uint32_t nameHash);
 
-// In-world guard: resolves the local ClientPcData + ZoneConnection. Returns false (no crash) when not in world.
-static bool EmoteNv_GetWorldState(void** outPc, void** outZc)
+// ---- keybind-aware emote resolution (v3, re-confirmed) ----------------------------------------------
+// The fired emote's identity is its nameHash = the ForgeLight/JOAAT hash of the InputProfile action name
+// (e.g. "Laugh"). We do NOT hash at runtime; re baked the nameHash -> emote itemDefinitionId table below
+// (93 entries, sorted ascending by nameHash; validated vs live ground truth, e.g. Laugh->3281, NoWay->3282,
+// Point->3283, Salute->3284, WaveHello->3276). 5 client emote names have no item and no-op by design
+// (DoubleBird, No, WaveHelloB, Cold, Listen).
+static const struct EmoteMapEntry { uint32_t nameHash; int32_t itemDef; const char* name; } kEmoteMap[] = {
+	{ 0x00914ADF, 3311, "JumpHooray" },
+	{ 0x05BD84D0, 3328, "ShakeHead" },
+	{ 0x0838C7A6, 3302, "FistPump" },
+	{ 0x0E1E3429, 3290, "BlowKiss" },
+	{ 0x10F0567A, 2438, "Beg" },
+	{ 0x123D8388, 3293, "Cheer" },
+	{ 0x15EEBDD6, 3308, "HappyDance" },
+	{ 0x18C56757, 3332, "ShrugDance" },
+	{ 0x1980E542, 3350, "Wave" },
+	{ 0x1AEF49B0, 3307, "HandBeckon" },
+	{ 0x1F1C05F5, 2006, "ScrewYou2" },
+	{ 0x2186D966, 1999, "BirdCannon" },
+	{ 0x226F13A2, 3155, "ListenToTheCrowd" },
+	{ 0x23BBFC0D, 3333, "Sigh" },
+	{ 0x2789A44C, 3329, "Shame" },
+	{ 0x27C852D1, 3346, "ThumbsUp" },
+	{ 0x2BA1B987, 3306, "Glare" },
+	{ 0x2DD475B9, 2000, "BootySlap" },
+	{ 0x2DD4A35A, 3325, "ScrewYouA" },
+	{ 0x2F96579D, 3318, "Pout" },
+	{ 0x3192E5A2, 3351, "Wince" },
+	{ 0x31FFC7FC, 3317, "Orate" },
+	{ 0x323AC39D, 3281, "Laugh" },
+	{ 0x34E57330, 3297, "Cry" },
+	{ 0x358A1820, 3312, "Loser" },
+	{ 0x364023C5, 2440, "Hump" },
+	{ 0x36B26875, 3314, "Moon" },
+	{ 0x39816F62, 2007, "ShimmyDance" },
+	{ 0x3A6E99CE, 3320, "Peer" },
+	{ 0x3DD67F75, 3347, "Victory" },
+	{ 0x3E86BFB2, 3313, "LookAway" },
+	{ 0x412E9EAA, 3819, "RaiseCrown" },
+	{ 0x431F93D8, 3310, "IsItRaining" },
+	{ 0x433A86B6, 3277, "Applause" },
+	{ 0x4E08AED5, 3287, "WaveBye" },
+	{ 0x596E6861, 3343, "Threaten" },
+	{ 0x61B5E0EF, 3299, "Curtsey" },
+	{ 0x6298DCDE, 3322, "RudeSlap" },
+	{ 0x64A654B4, 3288, "AirGuitar" },
+	{ 0x69239096, 3303, "Frustrated" },
+	{ 0x6A398C1B, 2001, "CrotchChop" },
+	{ 0x6F33E763, 3279, "CutThroat" },
+	{ 0x71312F42, 3154, "FlexPoint" },
+	{ 0x72327645, 3296, "Crazy" },
+	{ 0x74214AB9, 3352, "WooHoo" },
+	{ 0x77DCC6C1, 3291, "Bow" },
+	{ 0x78AD4259, 3282, "NoWay" },
+	{ 0x80AFE2D6, 3330, "ShieldEyes" },
+	{ 0x81B30629, 3323, "Sad" },
+	{ 0x849C0F5B, 3309, "Hot" },
+	{ 0x86637979, 3280, "TeaBag" },
+	{ 0x8E2F2A31, 3344, "Thanks" },
+	{ 0x90E5881A, 3353, "HandsUp" },
+	{ 0x981A5F97, 3289, "BasicSalute" },
+	{ 0xA2D40486, 2004, "PelvicThrust" },
+	{ 0xA5308550, 3294, "Confused" },
+	{ 0xA6CF6426, 3348, "Violin" },
+	{ 0xA9BEC11F, 3283, "Point" },
+	{ 0xAB78B537, 3319, "Ponder" },
+	{ 0xAC4D9D41, 3305, "GetAttention" },
+	{ 0xAE0488E0, 3331, "ShiverDownSpine" },
+	{ 0xB50423E3, 2441, "Flex" },
+	{ 0xB5678C7E, 3276, "WaveHello" },
+	{ 0xB7522182, 3324, "Scold" },
+	{ 0xBBCEDC73, 3326, "Scream" },
+	{ 0xC0805836, 2439, "Fisticuffs" },
+	{ 0xC0B85592, 3342, "TeabagLight" },
+	{ 0xC43CCA8B, 3304, "Flustered" },
+	{ 0xC5072AE4, 3327, "ShakeFist" },
+	{ 0xC741ECEA, 3335, "Sniff" },
+	{ 0xC7B4BEFC, 3285, "Agree" },
+	{ 0xCE9B9F3A, 3349, "Whistle" },
+	{ 0xD1FA91E7, 3339, "SwearOath" },
+	{ 0xD2EF2931, 3292, "ButtScratchSniff" },
+	{ 0xD4BA04AA, 3300, "Doh" },
+	{ 0xD549B972, 3301, "FingerWaggle" },
+	{ 0xD7E77A39, 3340, "TeaBagB" },
+	{ 0xD89D0FFC, 3284, "Salute" },
+	{ 0xDC56FF6F, 3336, "Stretch" },
+	{ 0xDEB9F121, 3334, "SingleFingerWaggle" },
+	{ 0xDEEBB36C, 3278, "Beckon" },
+	{ 0xE2E985D4, 2002, "CryBaby" },
+	{ 0xE2EC3B6E, 3286, "DanceA" },
+	{ 0xE550423D, 2005, "SarcasmDance" },
+	{ 0xEB330C10, 2008, "WereNotWorthy" },
+	{ 0xECB157F4, 2003, "Grind" },
+	{ 0xED4EF6BC, 3321, "RoyalWave" },
+	{ 0xED8B245C, 3338, "Sulk" },
+	{ 0xEECBEED2, 3298, "Curse" },
+	{ 0xF187A1A4, 3345, "ThumbsDown" },
+	{ 0xF39BD529, 3337, "Square" },
+	{ 0xF5CA4889, 3316, "Neener" },
+	{ 0xFDB59A4D, 3341, "TapFoot" },
+};
+static const int kEmoteMapCount = (int)(sizeof(kEmoteMap) / sizeof(kEmoteMap[0]));
+
+// nameHash -> emote itemDefinitionId (0 = not an emote / not in table). Sorted table -> binary search.
+static int32_t ResolveEmoteItemDef(uint32_t nameHash)
 {
-	void* pc = *(void**)REBASE(IDA_G_CLIENTPCDATA);
-	if (!pc) return false;                                   // not in world yet
-
-	void* gwRoot = *(void**)REBASE(IDA_G_GATEWAY);
-	if (!gwRoot) return false;
-	void* zc = *(void**)((char*)gwRoot + 8);                 // ZoneConnection
-	if (!zc) return false;
-
-	if (outPc) *outPc = pc;
-	if (outZc) *outZc = zc;
-	return true;
-}
-
-// =====================================================================================================
-// HOOK 1 — EMOTE (v2, live-verified)  (repairs the broken hotkey -> Animation.Request 0xf801 send)
-// =====================================================================================================
-// Dec-2016 emote hotkey broken; Emote_PlayHotkeySlot's TABLE2 lookup key-mismatches the server's slotId key,
-// so patch calls LocalCharacter_PlayAnimationAndRequest(0,&itemDef,1) directly (plays + sends 0xf801) with the
-// itemDef from the server's skinItems.emotes (TABLE2).
-//
-// WHY v1 (Emote_PlayHotkeySlot) failed: it maps F-slot -> emoteAnimSlotId via TABLE1, then looks up TABLE2 by
-// that animSlotId — but the server keys TABLE2 by the RAW slotId, so the lookup misses -> silent no-op.
-// (Live-confirmed: LocalCharacter_PlayAnimationAndRequest played + sent Animation.Request; the old path did not.)
-//
-// v2 flow, per fresh emote-key press while in-world:
-//   1) walk TABLE2 (HashList @ pc+0xF5A8) by RAW slot to find the granted emote's itemDefinitionId;
-//   2) if found, call LocalCharacter_PlayAnimationAndRequest @0x140576F50 with animData = &itemDef — this
-//      plays the emote locally AND sends Animation.Request 0xf801 {itemDef} (via SendAnimationRequest
-//      @0x140576880 -> SendPacket @0x14063C180). Server maps itemDef -> animationId and broadcasts
-//      Animation.Play 0xf802 to others. If a slot has no TABLE2 entry the server never granted it -> do nothing.
-//
-// This trampolines the per-frame emote-action-set input processor (uiMode==1). Its stock body forwards the
-// emote key to the client-run, stage-less ability route which produces NO 0xf801; we do the correct send
-// ourselves on the key edge and SKIP that broken body. Non-emote frames fall through unchanged (surgical).
-//
-// Emote-key detection: F1..F12 -> RAW slot 1..12 (account emotes are 13+), edge-triggered via GetAsyncKeyState
-// so exactly one 0xf801 is sent per press.
-// NOTE(live-test): F1..F12 == emote slot 1..12 is the stock default keybind. Ideally read the live
-// Emote01..Emote12 keybind (so a custom bind like U maps to its slot); reading the client keybind table is a
-// TODO — verify a press sends 0xf801 and that rebinds map correctly.
-
-// Walk TABLE2 (server-granted emotes) by RAW slot -> itemDefinitionId. 0 == not granted.
-//   HashList @ pc+0xF5A8 : listHead @ +0x10 ; node { itemDefId @ +0x04, next @ +0x08, slotId @ +0x18 }
-static uint32_t Emote_LookupItemDefBySlot(void* pc, uint32_t slot)
-{
-	void* node = *(void**)((char*)pc + 0xF5A8 + 0x10);
-	while (node)
+	int lo = 0, hi = kEmoteMapCount - 1;
+	while (lo <= hi)
 	{
-		if (*(uint32_t*)((char*)node + 0x18) == slot)
-			return *(uint32_t*)((char*)node + 0x04);
-		node = *(void**)((char*)node + 0x08);
+		int mid = (lo + hi) >> 1;
+		uint32_t h = kEmoteMap[mid].nameHash;
+		if (h == nameHash) return kEmoteMap[mid].itemDef;
+		if (h < nameHash) lo = mid + 1; else hi = mid - 1;
 	}
 	return 0;
 }
 
-// Diagnostic (compiled only when EMOTENV_LOG=1): on each emote-key press append the pressed F-key, the
-// hook's raw-key->slot assumption, the itemDef it resolved, AND a full walk of TABLE2 (every server-granted
-// slotId->itemDef) to emote_diag.log in the client dir. This captures the live slotId<->itemDef mapping so it
-// can be correlated (via dyn) against the operator's InputProfile "Emotes" bindings (e.g. Laugh->F6) — i.e.
-// it proves exactly how the raw-F-key->slotId assumption diverges from the real keybind, to drive the fix.
-// The hook LOGIC is unchanged; this only observes. Production (EMOTENV_LOG=0) compiles this to a no-op.
-static void EmoteNv_DiagPress(void* pc, int fkey, uint32_t slot, uint32_t itemDef)
-{
 #if EMOTENV_LOG
+static const char* EmoteName(uint32_t nameHash)
+{
+	for (int i = 0; i < kEmoteMapCount; ++i) if (kEmoteMap[i].nameHash == nameHash) return kEmoteMap[i].name;
+	return nullptr;
+}
+// Diagnostic (EMOTENV_LOG=1 only): append every emote-nameHash press to emote_diag.log with the resolved
+// itemDef + emote name (or "no map entry -> no-op"). Observe-only; writes to file via fopen, no console.
+static void EmoteNv_DiagEmote(uint32_t nameHash, int32_t itemDef)
+{
 	FILE* f = fopen("emote_diag.log", "a");
 	if (!f) return;
-	fprintf(f, "PRESS F%d -> hook slot=%u -> TABLE2[slot] itemDef=%u %s\n",
-		fkey, slot, itemDef, itemDef ? "(will PLAY + SEND 0xf801)" : "(no TABLE2 entry -> no send)");
-	fprintf(f, "  full TABLE2 (skinItems.emotes)  slotId -> itemDef:\n");
-	void* node = *(void**)((char*)pc + 0xF5A8 + 0x10);
-	int n = 0;
-	while (node && n < 128)
-	{
-		fprintf(f, "    slotId=%-3u itemDef=%u\n",
-			*(uint32_t*)((char*)node + 0x18), *(uint32_t*)((char*)node + 0x04));
-		node = *(void**)((char*)node + 0x08);
-		++n;
-	}
-	fprintf(f, "  (%d TABLE2 nodes)\n\n", n);
+	const char* nm = EmoteName(nameHash);
+	if (itemDef) fprintf(f, "EMOTE nameHash=0x%08X -> itemDef=%d  (%s)\n", nameHash, itemDef, nm ? nm : "?");
+	else         fprintf(f, "EMOTE nameHash=0x%08X -> (no map entry -> no-op)\n", nameHash);
 	fclose(f);
-#else
-	(void)pc; (void)fkey; (void)slot; (void)itemDef;
-#endif
-}
-
-#if EMOTENV_LOG
-// Guarded raw read: copies n bytes src->dst; returns false (no crash) if src is unreadable.
-static bool EmoteNv_SafeRead(const void* src, void* dst, size_t n)
-{
-	__try { memcpy(dst, src, n); return true; }
-	__except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 #endif
-
-// Diagnostic (compiled only when EMOTENV_LOG=1): dump this hook's own 4 args (a1..a4) on EVERY call, before
-// the raw-F-key/slot logic, so we can identify which arg/field carries the FIRED emote's identity — the
-// client can't run on a stock DLL (unrelated zoning patches live here), so a Frida-on-stock capture is out,
-// but the hook already receives these exact args. Operator presses F6(Laugh)/F7(NoWay)/F1(ListenToTheCrowd);
-// the value that DIFFERS across the three presses is the emote-identity input. Read-only/observe-only; every
-// dereference is SEH-guarded so a bad pointer cannot crash the client. Production (EMOTENV_LOG=0) => no-op.
-static void EmoteNv_DiagArgs(void* ret, void* a1, void* a2, void* a3, void* a4)
-{
-#if EMOTENV_LOG
-	static int s_call = 0;
-	int callNo = ++s_call;
-	FILE* f = fopen("emote_diag.log", "a");
-	if (!f) return;
-
-	uintptr_t base = (uintptr_t)0x140000000 + g_emoteNvDelta;   // live H1Z1.exe base
-	fprintf(f, "==== ARG DUMP #%d  ProcessInput_EmoteActionSetActivate ====\n", callNo);
-	fprintf(f, "  retaddr=%p  base+0x%llX  (IDA 0x%llX)\n",
-		ret, (unsigned long long)((uintptr_t)ret - base), (unsigned long long)((uintptr_t)ret - g_emoteNvDelta));
-
-	void* args[4] = { a1, a2, a3, a4 };
-	for (int i = 0; i < 4; ++i)
-	{
-		void* p = args[i];
-		fprintf(f, "  a%d = %p  asU32=0x%08X (%u)\n",
-			i + 1, p, (uint32_t)(uintptr_t)p, (uint32_t)(uintptr_t)p);
-
-		uint64_t probe;
-		if (!EmoteNv_SafeRead(p, &probe, sizeof(probe)))
-		{
-			fprintf(f, "        (not a readable pointer - likely an immediate/nameHash)\n");
-			continue;
-		}
-		// readable: dump the requested fields (each guarded independently)
-		static const uint32_t offs32[5] = { 0x00, 0x04, 0x08, 0x10, 0x18 };
-		for (int k = 0; k < 5; ++k)
-		{
-			uint32_t v;
-			if (EmoteNv_SafeRead((char*)p + offs32[k], &v, sizeof(v)))
-				fprintf(f, "        u32 +0x%02X = 0x%08X (%u)\n", offs32[k], v, v);
-			else
-				fprintf(f, "        u32 +0x%02X = <unreadable>\n", offs32[k]);
-		}
-		uint64_t v0, v8;
-		if (EmoteNv_SafeRead((char*)p + 0x00, &v0, sizeof(v0)))
-			fprintf(f, "        u64 +0x00 = 0x%016llX\n", (unsigned long long)v0);
-		if (EmoteNv_SafeRead((char*)p + 0x08, &v8, sizeof(v8)))
-			fprintf(f, "        u64 +0x08 = 0x%016llX\n", (unsigned long long)v8);
-
-		// 0x40-byte hex dump (guarded); if the whole read fails, fall back to byte-by-byte guarded reads.
-		unsigned char buf[0x40];
-		bool whole = EmoteNv_SafeRead(p, buf, sizeof(buf));
-		fprintf(f, "        hex +0x00..0x40:");
-		for (int b = 0; b < 0x40; ++b)
-		{
-			if ((b % 16) == 0) fprintf(f, "\n          +0x%02X: ", b);
-			unsigned char c;
-			bool ok = whole ? (c = buf[b], true) : EmoteNv_SafeRead((char*)p + b, &c, 1);
-			if (ok) fprintf(f, "%02X ", c);
-			else    fprintf(f, "?? ");
-		}
-		fprintf(f, "\n");
-	}
-	fprintf(f, "\n");
-	fclose(f);
-#else
-	(void)ret; (void)a1; (void)a2; (void)a3; (void)a4;
-#endif
-}
-
-static long long(__fastcall* ProcessInput_EmoteActionSetActivate_orig)(void*, void*, void*, void*) = nullptr;
-static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, void* a2, void* a3, void* a4)
-{
-	static bool s_prevDown[12] = { false };   // per-slot edge state for F1..F12
-
-	EmoteNv_DiagArgs(_ReturnAddress(), a1, a2, a3, a4);   // diagnostic arg dump (no-op in production; logic unchanged)
-
-	__try
-	{
-		void* pc = nullptr; void* zc = nullptr;
-		if (EmoteNv_GetWorldState(&pc, &zc))  // only while in-world (also implies emote tables live server-side)
-		{
-			for (int i = 0; i < 12; ++i)
-			{
-				bool down = (GetAsyncKeyState(VK_F1 + i) & 0x8000) != 0;
-				if (down && !s_prevDown[i])
-				{
-					s_prevDown[i] = true;                          // consume this edge
-					uint32_t slot = (uint32_t)(i + 1);             // F1 -> slot 1 ... F12 -> slot 12
-
-					uint32_t itemDef = Emote_LookupItemDefBySlot(pc, slot);  // TABLE2: server-granted emote
-					EmoteNv_DiagPress(pc, i + 1, slot, itemDef);             // diagnostic dump (no-op in production)
-					if (itemDef)
-					{
-						int animData = (int)itemDef;              // send-path reads *(int*)animData = itemDefinitionId
-						((LocalCharacter_PlayAnimationAndRequest_t)REBASE(0x140576F50))(0, &animData, 1); // plays + sends 0xf801
-						ENV_LOG("[EmoteNvPatch] Emote hotkey F%d (slot=%u) -> PlayAnimationAndRequest itemDef=%u (0xf801)\n",
-							i + 1, slot, itemDef);
-					}
-					else
-					{
-						ENV_LOG("[EmoteNvPatch] Emote hotkey F%d (slot=%u): no TABLE2 entry (not granted) - no send\n", i + 1, slot);
-					}
-					return 0;                                      // SKIP original broken ability route
-				}
-				if (!down) s_prevDown[i] = false;                  // reset edge when key released
-			}
-		}
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		ENV_LOG("[EmoteNvPatch] emote hook excepted, caught and returned.\n");
-	}
-
-	return ProcessInput_EmoteActionSetActivate_orig(a1, a2, a3, a4); // non-emote frames: unchanged behavior
-}
 
 // =====================================================================================================
-// HOOK 2 — NIGHT VISION (v2, live-verified)  (repairs the broken hotkey -> Abilities.InitAbility 0xa101)
+// COMBINED HOOK — EMOTE + NIGHT VISION (v3, keybind-aware)  @ Ability_ActivateByNameHash 0x140931E10
 // =====================================================================================================
-// Dec-2016 NV hotkey broken: NV instance member id 0 -> ActivateCore BAIL-1a @0x140562e3f. Patch forces the
-// member to 1111272 so the game's own 0xa101 send fires (the hand-built packet crashed the serializer at +0x38).
+// Dec-2016: BOTH the emote and NV *hotkeys* are broken on this client build (fixed/removed in the Feb-14-2017
+// patch: "Fixed Emotes (stopped working per account)" / "Temporarily removed night vision goggles ... did not
+// function as expected"). On a key press the game resolves the bound InputProfile action to its nameHash and
+// calls Ability_ActivateByNameHash(ctrl, nameHash) — but the stock ability route never produces the correct
+// network send for these two, so the emote never plays and NV never toggles. We intercept at that call and
+// drive the working sends directly. Everything else (weapons, vehicles, all other abilities) calls the
+// original untouched.
 //
-// Broken path: P -> Ability_ActivateByNameHash(localChar, 0x2be7f704) -> NV instance member id 0 ->
-// Ability_ActivateCore BAIL-1a -> no send.
+// EMOTE (repairs the broken hotkey -> Animation.Request 0xf801):
+//   The fired emote's identity is its nameHash (hash of the InputProfile action name, e.g. "Laugh"). This is
+//   why the earlier raw-F-key->TABLE2-slot patch mis-mapped every key: it ignored the keybind and played the
+//   server's fixed slot order. v3 resolves nameHash -> emote itemDefinitionId via the baked kEmoteMap and
+//   calls LocalCharacter_PlayAnimationAndRequest(0,&itemDef,1) @0x140576F50 — plays locally AND sends 0xf801
+//   {itemDef} (via SendAnimationRequest @0x140576880 -> SendPacket @0x14063C180); server broadcasts
+//   Animation.Play 0xf802 (no grant gate — plays granted or not; confirmed no server-side grant check). This
+//   is keybind-aware by construction: any key bound to an emote action (incl. non-F keys) resolves correctly,
+//   because the GAME did the key->nameHash resolution before this call. nameHash not in kEmoteMap -> fall
+//   through to the original (untouched). 5 emote names have no item and no-op by design.
 //
-// WHY v1 (hand-built 0xa101 packet) crashed: the Abilities.InitAbility serializer dereferences packet+0x38 (a
-// null ctx we couldn't populate) -> access violation. v2 instead force-fixes the ONE broken field (the member
-// id) and lets the game build & send its own correct packet:
-//   1) resolve the NV ability instance via AbilityStore_LookupByNameHash @0x140565740 (store = pc+0xB618);
-//   2) write member-list head node (*(uint32_t*)node = 1111272) so the member id is > 0;
-//   3) fall through to the ORIGINAL — with member>0, ActivateCore passes BAIL-1a and the game sends the correct
-//      0xa101 itself (NV def flags 0x49 = RUN_ON_SERVER). The server's handler toggles NV (== /nv). No crash.
-// We divert ONLY nameHash 0x2be7f704; every other ability (and the NV fall-through) calls the original.
+// NV (repairs the broken hotkey -> Abilities.InitAbility 0xa101 {abilityId:1111272}):
+//   NV instance member id is 0 -> Ability_ActivateCore BAIL-1a @0x140562e3f -> no send. Force-fix that ONE
+//   field then let the game send its own correct packet (a hand-built 0xa101 crashed the serializer at +0x38):
+//     1) resolve the NV instance via AbilityStore_LookupByNameHash @0x140565740 (store = pc+0xB618);
+//     2) write member-list head (*(uint32_t*)node = 1111272) so member id > 0;
+//     3) fall through to the ORIGINAL — with member>0, ActivateCore passes BAIL-1a and the game sends 0xa101
+//        (NV def flags 0x49 = RUN_ON_SERVER); server toggles NV (== /nv). No crash. Unchanged from v2.
+//
+// SURGICAL: only known emote nameHashes and the NV nameHash are intercepted; all other nameHashes -> original.
 static const int NV_NAME_HASH = 0x2be7f704;
 static const uint32_t NV_ABILITY_ID = 1111272;
 
 static void(__fastcall* Ability_ActivateByNameHash_orig)(long long localChar, int nameHash) = nullptr;
 static void __fastcall Ability_ActivateByNameHash_hook(long long localChar, int nameHash)
 {
-	if (nameHash == NV_NAME_HASH)   // 0x2be7f704 — NV toggle only
+	if (nameHash == NV_NAME_HASH)   // 0x2be7f704 — NV toggle (unchanged v2 behavior)
 	{
 		__try
 		{
@@ -1312,7 +1249,34 @@ static void __fastcall Ability_ActivateByNameHash_hook(long long localChar, int 
 		}
 		// DO NOT return: fall through so the game's own correct 0xa101 send fires.
 	}
-	Ability_ActivateByNameHash_orig(localChar, nameHash); // NV (now member>0) + every other ability unaffected
+	else   // EMOTE (v3): keybind-aware nameHash -> itemDef -> direct play+send; non-emotes fall through.
+	{
+		int32_t itemDef = ResolveEmoteItemDef((uint32_t)nameHash);
+#if EMOTENV_LOG
+		if (itemDef) EmoteNv_DiagEmote((uint32_t)nameHash, itemDef);   // only log recognized emote presses
+#endif
+		if (itemDef)
+		{
+			__try
+			{
+				void* pc = *(void**)REBASE(IDA_G_CLIENTPCDATA);       // in-world guard (NULL until in-world)
+				if (pc)
+				{
+					int animData = itemDef;                           // send-path reads *(int*)animData = itemDefinitionId
+					((LocalCharacter_PlayAnimationAndRequest_t)REBASE(0x140576F50))(0, &animData, 1); // plays + sends 0xf801
+					ENV_LOG("[EmoteNvPatch] Emote nameHash=0x%08X -> PlayAnimationAndRequest itemDef=%d (0xf801)\n",
+						(uint32_t)nameHash, itemDef);
+				}
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				ENV_LOG("[EmoteNvPatch] emote play excepted, caught and returned.\n");
+			}
+			return;                                                   // handled the emote; skip the broken original route
+		}
+		// nameHash not a known emote -> fall through to the original (all other abilities unaffected).
+	}
+	Ability_ActivateByNameHash_orig(localChar, nameHash); // NV (now member>0) + every non-emote ability unaffected
 }
 
 bool VCPatcher::Init()
@@ -1344,10 +1308,12 @@ bool VCPatcher::Init()
 	MH_CreateHook((char*)0x1405F9190, sendGroupJoinPacket, (void**)&sendGroupJoinPacket_orig);
 
 	// EMOTE + NIGHT-VISION HOTKEY REPAIR (Dec-2016 broken-trigger fix; see block above for full rationale):
-	// resolve the ASLR delta once, then install the two surgical direct-send trampolines.
+	// resolve the ASLR delta once, then install the single combined trampoline on Ability_ActivateByNameHash.
+	// The game resolves key -> bound InputProfile action -> nameHash before this call, so intercepting here is
+	// keybind-aware: emote nameHashes -> direct 0xf801 play+send; NV nameHash -> force-member+original; all
+	// other abilities -> original. (The old raw-F-key->slot ProcessInput hook is removed; it mis-mapped keys.)
 	g_emoteNvDelta = (uintptr_t)GetModuleHandleW(L"H1Z1.exe") - 0x140000000;
-	MH_CreateHook((char*)REBASE(0x14043BEB0), ProcessInput_EmoteActionSetActivate_hook, (void**)&ProcessInput_EmoteActionSetActivate_orig); // HOOK 1 emote -> 0xf801
-	MH_CreateHook((char*)REBASE(0x140931E10), Ability_ActivateByNameHash_hook,          (void**)&Ability_ActivateByNameHash_orig);          // HOOK 2 NV -> 0xa101{1111272}
+	MH_CreateHook((char*)REBASE(0x140931E10), Ability_ActivateByNameHash_hook, (void**)&Ability_ActivateByNameHash_orig); // emote 0xf801 + NV 0xa101{1111272}
 
 	// CUSTOM PACKETS:
 

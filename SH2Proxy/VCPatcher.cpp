@@ -1017,6 +1017,12 @@ static void handleRequestAssetHashesPacket(Buffer* buffer) {
 // into the proxied-char manager / emote tables / send queue are on the correct (non-thread-safe) thread.
 // Every send is guarded by an in-world check; if not in world the hooks no-op and fall through safely.
 
+// ---- debug logging gate (production = silent) ----
+// EMOTENV_LOG 0 => production: the emote/NV hooks emit NOTHING at runtime.
+// EMOTENV_LOG 1 => debug: ENV_LOG(...) prints like printf. Pre-existing (non-emote/NV) logging is unaffected.
+#define EMOTENV_LOG 0
+#define ENV_LOG(...) do { if (EMOTENV_LOG) printf(__VA_ARGS__); } while (0)
+
 // ---- runtime ASLR rebase (delta applied to every IDA address, base 0x140000000) ----
 static uintptr_t g_emoteNvDelta = 0;
 static inline uintptr_t REBASE(uintptr_t idaAddr) { return idaAddr + g_emoteNvDelta; }
@@ -1114,12 +1120,12 @@ static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, v
 					{
 						int animData = (int)itemDef;              // send-path reads *(int*)animData = itemDefinitionId
 						((LocalCharacter_PlayAnimationAndRequest_t)REBASE(0x140576F50))(0, &animData, 1); // plays + sends 0xf801
-						printf("[EmoteNvPatch] Emote hotkey F%d (slot=%u) -> PlayAnimationAndRequest itemDef=%u (0xf801)\n",
+						ENV_LOG("[EmoteNvPatch] Emote hotkey F%d (slot=%u) -> PlayAnimationAndRequest itemDef=%u (0xf801)\n",
 							i + 1, slot, itemDef);
 					}
 					else
 					{
-						printf("[EmoteNvPatch] Emote hotkey F%d (slot=%u): no TABLE2 entry (not granted) - no send\n", i + 1, slot);
+						ENV_LOG("[EmoteNvPatch] Emote hotkey F%d (slot=%u): no TABLE2 entry (not granted) - no send\n", i + 1, slot);
 					}
 					return 0;                                      // SKIP original broken ability route
 				}
@@ -1129,7 +1135,7 @@ static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, v
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER)
 	{
-		printf("[EmoteNvPatch] emote hook excepted, caught and returned.\n");
+		ENV_LOG("[EmoteNvPatch] emote hook excepted, caught and returned.\n");
 	}
 
 	return ProcessInput_EmoteActionSetActivate_orig(a1, a2, a3, a4); // non-emote frames: unchanged behavior
@@ -1173,7 +1179,7 @@ static void __fastcall Ability_ActivateByNameHash_hook(long long localChar, int 
 					if (node)
 					{
 						*(uint32_t*)node = NV_ABILITY_ID;       // force member id (was 0 -> BAIL-1a)
-						printf("[EmoteNvPatch] NV hotkey: forced member id -> %u; letting game send 0xa101\n", NV_ABILITY_ID);
+						ENV_LOG("[EmoteNvPatch] NV hotkey: forced member id -> %u; letting game send 0xa101\n", NV_ABILITY_ID);
 					}
 				}
 			}
@@ -1181,7 +1187,7 @@ static void __fastcall Ability_ActivateByNameHash_hook(long long localChar, int 
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
 		{
-			printf("[EmoteNvPatch] NV hook excepted, caught and returned.\n");
+			ENV_LOG("[EmoteNvPatch] NV hook excepted, caught and returned.\n");
 		}
 		// DO NOT return: fall through so the game's own correct 0xa101 send fires.
 	}

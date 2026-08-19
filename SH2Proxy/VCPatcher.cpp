@@ -996,6 +996,184 @@ static void handleRequestAssetHashesPacket(Buffer* buffer) {
 	}
 }
 
+// ############################################################################################################
+// ###############   Dec-2016 EMOTE + NIGHT-VISION HOTKEY REPAIR (two surgical direct-send hooks)   ###########
+// ############################################################################################################
+//
+// WHY THIS PATCH EXISTS
+// ---------------------
+// On the Dec-2016 H1Z1 client the EMOTE and NIGHT-VISION *hotkey* dispatch is BROKEN. This is officially
+// acknowledged in the Feb-14-2017 patch notes:
+//     - "Fixed Emotes (stopped working per account)"
+//     - "Temporarily removed night vision goggles ... previous incarnation did not function as expected"
+// i.e. the trigger that turns a hotkey press into the correct network send was bugged on this build and was
+// fixed / removed in the following patch. The *working* send functions still exist in this binary and the
+// server implements the intended design, so the fix is simply to drive those existing sends directly when the
+// hotkey fires. THIS PATCH REPAIRS ONLY THE BROKEN HOTKEY TRIGGER — it has NO effect on any other client
+// functionality (weapons, vehicles, other abilities, other action sets, non-hotkey emotes, etc.).
+//
+// Everything below is __fastcall (x64) and ASLR-rebased at runtime off H1Z1.exe (see REBASE()).
+// MAIN-THREAD ONLY: both hooks trampoline functions that already run on the game main thread, so the calls
+// into the proxied-char manager / emote tables / send queue are on the correct (non-thread-safe) thread.
+// Every send is guarded by an in-world check; if not in world the hooks no-op and fall through safely.
+
+// ---- runtime ASLR rebase (delta applied to every IDA address, base 0x140000000) ----
+static uintptr_t g_emoteNvDelta = 0;
+static inline uintptr_t REBASE(uintptr_t idaAddr) { return idaAddr + g_emoteNvDelta; }
+
+// ---- globals (IDA addresses, rebased at use) ----
+//   g_ClientPcData @0x142B19BA0 : *(void**) -> ClientPcData (NULL until in-world). characterId @ pc+0x18.
+//   g_Gateway      @0x142B19B98 : ZoneConnection = *(void**)(*(void**)g_Gateway + 8)
+#define IDA_G_CLIENTPCDATA 0x142B19BA0
+#define IDA_G_GATEWAY      0x142B19B98
+
+// ---- working send functions we drive directly ----
+typedef void(__fastcall* Emote_PlayHotkeySlot_t)(void* emoteObj, uint32_t slotIndex);      // @0x1405C4510
+typedef long long(__fastcall* SendAbilitiesInitAbility_t)(void* zc, void* pkt, unsigned int ch, unsigned char insertFlag); // @0x14055AA40
+
+// In-world guard: resolves the local ClientPcData + ZoneConnection. Returns false (no crash) when not in world.
+static bool EmoteNv_GetWorldState(void** outPc, void** outZc)
+{
+	void* pc = *(void**)REBASE(IDA_G_CLIENTPCDATA);
+	if (!pc) return false;                                   // not in world yet
+
+	void* gwRoot = *(void**)REBASE(IDA_G_GATEWAY);
+	if (!gwRoot) return false;
+	void* zc = *(void**)((char*)gwRoot + 8);                 // ZoneConnection
+	if (!zc) return false;
+
+	if (outPc) *outPc = pc;
+	if (outZc) *outZc = zc;
+	return true;
+}
+
+// =====================================================================================================
+// HOOK 1 — EMOTE  (repairs the broken hotkey -> Animation.Request 0xf801 send)
+// =====================================================================================================
+// Dec-2016: ProcessInput_EmoteActionSetActivate @0x14043beb0 routes F to the client-run ability route
+// (no 0xf801); patched to call Emote_PlayHotkeySlot(pc+0xF500, slot) so the intended 0xf801 send occurs.
+//
+// This function is the per-frame emote-action-set input processor (uiMode==1). Its stock body forwards the
+// emote key to the client-run, stage-less ability route which produces NO network send (0xf801). We do NOT
+// byte-patch the fork's jnz: the !=1 branch calls EnqueuePlayEmote (a local action event, still no network
+// send), so it cannot produce 0xf801 either — the direct call to the working sender is required.
+//
+// Detection: the emote hotkeys are F1..F12 -> raw slot 1..12 (account emotes are 13+). We edge-detect a fresh
+// F1..F12 press each frame (GetAsyncKeyState) so exactly one 0xf801 is sent per key press, then SKIP the
+// original body (it only does the broken ability route). All non-emote-key frames fall through to the
+// original unchanged, keeping the hook surgical.
+// NOTE(live-test): F1..F12 == emote slot 1..12 is the stock default keybind; if the operator has rebound the
+// emote hotkeys this detection would need to read the live keybind instead. Verify a press sends 0xf801.
+static long long(__fastcall* ProcessInput_EmoteActionSetActivate_orig)(void*, void*, void*, void*) = nullptr;
+static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, void* a2, void* a3, void* a4)
+{
+	static bool s_prevDown[12] = { false };   // per-slot edge state for F1..F12
+
+	__try
+	{
+		void* pc = nullptr; void* zc = nullptr;
+		if (EmoteNv_GetWorldState(&pc, &zc))  // only while in-world (also implies emote tables live server-side)
+		{
+			for (int i = 0; i < 12; ++i)
+			{
+				bool down = (GetAsyncKeyState(VK_F1 + i) & 0x8000) != 0;
+				if (down && !s_prevDown[i])
+				{
+					s_prevDown[i] = true;                          // consume this edge
+					uint32_t slot = (uint32_t)(i + 1);             // F1 -> slot 1 ... F12 -> slot 12
+					void* emoteObj = (char*)pc + 0xF500;           // ClientPcData + 0xF500
+					((Emote_PlayHotkeySlot_t)REBASE(0x1405C4510))(emoteObj, slot);
+					printf("[EmoteNvPatch] Emote hotkey F%d -> Emote_PlayHotkeySlot(slot=%u) (0xf801)\n", i + 1, slot);
+					return 0;                                      // SKIP original broken ability route
+				}
+				if (!down) s_prevDown[i] = false;                  // reset edge when key released
+			}
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		printf("[EmoteNvPatch] emote hook excepted, caught and returned.\n");
+	}
+
+	return ProcessInput_EmoteActionSetActivate_orig(a1, a2, a3, a4); // non-emote frames: unchanged behavior
+}
+
+// =====================================================================================================
+// HOOK 2 — NIGHT VISION  (repairs the broken hotkey -> Abilities.InitAbility 0xa101 {abilityId:1111272})
+// =====================================================================================================
+// Dec-2016: Ability_ActivateCore BAIL-1a @0x140562e3f bails on NV member id 0; patched to send
+// Abilities.InitAbility 0xa101{1111272} directly so the intended NV toggle occurs.
+//
+// Broken path: P -> Ability_ActivateByNameHash(localChar, 0x2be7f704) -> NV instance member id 0 ->
+// Ability_ActivateCore BAIL-1a -> no send. We divert ONLY nameHash 0x2be7f704 and send the packet directly;
+// every other ability nameHash calls the original unchanged. We do NOT byte-patch ActivateCore's BAIL-1a
+// because that path is shared by ALL abilities and would send abilityId=0 — the scoped hook is required.
+static const int NV_NAME_HASH = 0x2be7f704;
+static const uint32_t NV_ABILITY_ID = 1111272;
+
+// Reproduces Ability_ActivateCore's Abilities.InitAbility packet (offsets disasm-verified).
+// The server keys on abilityId==1111272 + characterId (load-bearing); abilityReqId/ctx = 0.
+#pragma pack(push, 1)
+struct InitAbilityPkt {
+	void*     tmpl;          // 0x00  template  (@0x1420C7B70)
+	int32_t   opcode;        // 0x08  0xA1
+	int32_t   _pad0C;        // 0x0C
+	int32_t   sub;           // 0x10  1
+	int32_t   _pad14;        // 0x14
+	int32_t   flag;          // 0x18  1
+	int32_t   _pad1C;        // 0x1C
+	int32_t   z0;            // 0x20  0
+	uint32_t  abilityId;     // 0x24  1111272
+	int32_t   abilityReqId;  // 0x28  0
+	int32_t   _pad2C;        // 0x2C
+	uint64_t* pCharId;       // 0x30  -> local characterId
+	uint64_t  ctx0;          // 0x38  0
+	uint64_t  ctx1;          // 0x40  0
+	uint64_t  ctx2;          // 0x48  0
+};
+#pragma pack(pop)
+
+static void SendInitAbility_NV()
+{
+	void* pc = nullptr; void* zc = nullptr;
+	if (!EmoteNv_GetWorldState(&pc, &zc)) return;   // not in world: no-op (no crash)
+
+	uint64_t cid = *(uint64_t*)((char*)pc + 0x18);  // local player characterId (must outlive the synchronous send)
+
+	InitAbilityPkt p;
+	memset(&p, 0, sizeof(p));
+	p.tmpl         = (void*)REBASE(0x1420C7B70);
+	p.opcode       = 0xA1;
+	p.sub          = 1;
+	p.flag         = 1;
+	p.z0           = 0;
+	p.abilityId    = NV_ABILITY_ID;   // 1111272
+	p.abilityReqId = 0;
+	p.pCharId      = &cid;
+
+	((SendAbilitiesInitAbility_t)REBASE(0x14055AA40))(zc, &p, 0, 1); // ZoneConnection::SendAbilitiesInitAbility
+	printf("[EmoteNvPatch] NV hotkey -> Abilities.InitAbility 0xa101{abilityId=%u, cid=%llu}\n",
+		NV_ABILITY_ID, (unsigned long long)cid);
+}
+
+static void(__fastcall* Ability_ActivateByNameHash_orig)(long long localChar, int nameHash) = nullptr;
+static void __fastcall Ability_ActivateByNameHash_hook(long long localChar, int nameHash)
+{
+	if (nameHash == NV_NAME_HASH)   // 0x2be7f704 — NV toggle only
+	{
+		__try
+		{
+			SendInitAbility_NV();   // skip the broken NV member / BAIL-1a path
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER)
+		{
+			printf("[EmoteNvPatch] NV hook excepted, caught and returned.\n");
+		}
+		return;
+	}
+	Ability_ActivateByNameHash_orig(localChar, nameHash); // every other ability unaffected
+}
+
 bool VCPatcher::Init()
 {
 	// #########################################################     Game patches     ########################################################
@@ -1023,6 +1201,12 @@ bool VCPatcher::Init()
 
 	// GROUP:
 	MH_CreateHook((char*)0x1405F9190, sendGroupJoinPacket, (void**)&sendGroupJoinPacket_orig);
+
+	// EMOTE + NIGHT-VISION HOTKEY REPAIR (Dec-2016 broken-trigger fix; see block above for full rationale):
+	// resolve the ASLR delta once, then install the two surgical direct-send trampolines.
+	g_emoteNvDelta = (uintptr_t)GetModuleHandleW(L"H1Z1.exe") - 0x140000000;
+	MH_CreateHook((char*)REBASE(0x14043BEB0), ProcessInput_EmoteActionSetActivate_hook, (void**)&ProcessInput_EmoteActionSetActivate_orig); // HOOK 1 emote -> 0xf801
+	MH_CreateHook((char*)REBASE(0x140931E10), Ability_ActivateByNameHash_hook,          (void**)&Ability_ActivateByNameHash_orig);          // HOOK 2 NV -> 0xa101{1111272}
 
 	// CUSTOM PACKETS:
 

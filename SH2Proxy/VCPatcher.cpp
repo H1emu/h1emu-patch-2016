@@ -1025,8 +1025,12 @@ static void handleRequestAssetHashesPacket(Buffer* buffer) {
 
 // ---- debug logging gate (production = silent) ----
 // EMOTENV_LOG 0 => production: the emote/NV hooks emit NOTHING at runtime.
-// EMOTENV_LOG 1 => debug: ENV_LOG(...) prints like printf. Pre-existing (non-emote/NV) logging is unaffected.
+// EMOTENV_LOG 1 => diagnostic: ENV_LOG(...) prints like printf AND the emote hook writes a per-press
+//                  TABLE2 dump to emote_diag.log (see EmoteNv_DiagPress). Pre-existing (non-emote/NV)
+//                  logging is unaffected. Override to 1 for a diagnostic build without editing this default.
+#ifndef EMOTENV_LOG
 #define EMOTENV_LOG 0
+#endif
 #define ENV_LOG(...) do { if (EMOTENV_LOG) printf(__VA_ARGS__); } while (0)
 
 // ---- runtime ASLR rebase (delta applied to every IDA address, base 0x140000000) ----
@@ -1103,6 +1107,36 @@ static uint32_t Emote_LookupItemDefBySlot(void* pc, uint32_t slot)
 	return 0;
 }
 
+// Diagnostic (compiled only when EMOTENV_LOG=1): on each emote-key press append the pressed F-key, the
+// hook's raw-key->slot assumption, the itemDef it resolved, AND a full walk of TABLE2 (every server-granted
+// slotId->itemDef) to emote_diag.log in the client dir. This captures the live slotId<->itemDef mapping so it
+// can be correlated (via dyn) against the operator's InputProfile "Emotes" bindings (e.g. Laugh->F6) — i.e.
+// it proves exactly how the raw-F-key->slotId assumption diverges from the real keybind, to drive the fix.
+// The hook LOGIC is unchanged; this only observes. Production (EMOTENV_LOG=0) compiles this to a no-op.
+static void EmoteNv_DiagPress(void* pc, int fkey, uint32_t slot, uint32_t itemDef)
+{
+#if EMOTENV_LOG
+	FILE* f = fopen("emote_diag.log", "a");
+	if (!f) return;
+	fprintf(f, "PRESS F%d -> hook slot=%u -> TABLE2[slot] itemDef=%u %s\n",
+		fkey, slot, itemDef, itemDef ? "(will PLAY + SEND 0xf801)" : "(no TABLE2 entry -> no send)");
+	fprintf(f, "  full TABLE2 (skinItems.emotes)  slotId -> itemDef:\n");
+	void* node = *(void**)((char*)pc + 0xF5A8 + 0x10);
+	int n = 0;
+	while (node && n < 128)
+	{
+		fprintf(f, "    slotId=%-3u itemDef=%u\n",
+			*(uint32_t*)((char*)node + 0x18), *(uint32_t*)((char*)node + 0x04));
+		node = *(void**)((char*)node + 0x08);
+		++n;
+	}
+	fprintf(f, "  (%d TABLE2 nodes)\n\n", n);
+	fclose(f);
+#else
+	(void)pc; (void)fkey; (void)slot; (void)itemDef;
+#endif
+}
+
 static long long(__fastcall* ProcessInput_EmoteActionSetActivate_orig)(void*, void*, void*, void*) = nullptr;
 static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, void* a2, void* a3, void* a4)
 {
@@ -1122,6 +1156,7 @@ static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, v
 					uint32_t slot = (uint32_t)(i + 1);             // F1 -> slot 1 ... F12 -> slot 12
 
 					uint32_t itemDef = Emote_LookupItemDefBySlot(pc, slot);  // TABLE2: server-granted emote
+					EmoteNv_DiagPress(pc, i + 1, slot, itemDef);             // diagnostic dump (no-op in production)
 					if (itemDef)
 					{
 						int animData = (int)itemDef;              // send-path reads *(int*)animData = itemDefinitionId

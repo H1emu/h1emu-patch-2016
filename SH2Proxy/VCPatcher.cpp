@@ -1027,9 +1027,11 @@ static inline uintptr_t REBASE(uintptr_t idaAddr) { return idaAddr + g_emoteNvDe
 #define IDA_G_CLIENTPCDATA 0x142B19BA0
 #define IDA_G_GATEWAY      0x142B19B98
 
-// ---- working send functions we drive directly ----
-typedef void(__fastcall* Emote_PlayHotkeySlot_t)(void* emoteObj, uint32_t slotIndex);      // @0x1405C4510
-typedef long long(__fastcall* SendAbilitiesInitAbility_t)(void* zc, void* pkt, unsigned int ch, unsigned char insertFlag); // @0x14055AA40
+// ---- working game functions we drive directly (v2, live-verified) ----
+// Emote: LocalCharacter_PlayAnimationAndRequest @0x140576F50 — plays locally AND sends Animation.Request 0xf801.
+typedef void(__fastcall* LocalCharacter_PlayAnimationAndRequest_t)(void* a0, int* animData, char send);
+// NV: AbilityStore_LookupByNameHash @0x140565740 — resolves the ability instance for a nameHash.
+typedef void*(__fastcall* AbilityStore_LookupByNameHash_t)(void* store, uint32_t nameHash);
 
 // In-world guard: resolves the local ClientPcData + ZoneConnection. Returns false (no crash) when not in world.
 static bool EmoteNv_GetWorldState(void** outPc, void** outZc)
@@ -1048,22 +1050,47 @@ static bool EmoteNv_GetWorldState(void** outPc, void** outZc)
 }
 
 // =====================================================================================================
-// HOOK 1 — EMOTE  (repairs the broken hotkey -> Animation.Request 0xf801 send)
+// HOOK 1 — EMOTE (v2, live-verified)  (repairs the broken hotkey -> Animation.Request 0xf801 send)
 // =====================================================================================================
-// Dec-2016: ProcessInput_EmoteActionSetActivate @0x14043beb0 routes F to the client-run ability route
-// (no 0xf801); patched to call Emote_PlayHotkeySlot(pc+0xF500, slot) so the intended 0xf801 send occurs.
+// Dec-2016 emote hotkey broken; Emote_PlayHotkeySlot's TABLE2 lookup key-mismatches the server's slotId key,
+// so patch calls LocalCharacter_PlayAnimationAndRequest(0,&itemDef,1) directly (plays + sends 0xf801) with the
+// itemDef from the server's skinItems.emotes (TABLE2).
 //
-// This function is the per-frame emote-action-set input processor (uiMode==1). Its stock body forwards the
-// emote key to the client-run, stage-less ability route which produces NO network send (0xf801). We do NOT
-// byte-patch the fork's jnz: the !=1 branch calls EnqueuePlayEmote (a local action event, still no network
-// send), so it cannot produce 0xf801 either — the direct call to the working sender is required.
+// WHY v1 (Emote_PlayHotkeySlot) failed: it maps F-slot -> emoteAnimSlotId via TABLE1, then looks up TABLE2 by
+// that animSlotId — but the server keys TABLE2 by the RAW slotId, so the lookup misses -> silent no-op.
+// (Live-confirmed: LocalCharacter_PlayAnimationAndRequest played + sent Animation.Request; the old path did not.)
 //
-// Detection: the emote hotkeys are F1..F12 -> raw slot 1..12 (account emotes are 13+). We edge-detect a fresh
-// F1..F12 press each frame (GetAsyncKeyState) so exactly one 0xf801 is sent per key press, then SKIP the
-// original body (it only does the broken ability route). All non-emote-key frames fall through to the
-// original unchanged, keeping the hook surgical.
-// NOTE(live-test): F1..F12 == emote slot 1..12 is the stock default keybind; if the operator has rebound the
-// emote hotkeys this detection would need to read the live keybind instead. Verify a press sends 0xf801.
+// v2 flow, per fresh emote-key press while in-world:
+//   1) walk TABLE2 (HashList @ pc+0xF5A8) by RAW slot to find the granted emote's itemDefinitionId;
+//   2) if found, call LocalCharacter_PlayAnimationAndRequest @0x140576F50 with animData = &itemDef — this
+//      plays the emote locally AND sends Animation.Request 0xf801 {itemDef} (via SendAnimationRequest
+//      @0x140576880 -> SendPacket @0x14063C180). Server maps itemDef -> animationId and broadcasts
+//      Animation.Play 0xf802 to others. If a slot has no TABLE2 entry the server never granted it -> do nothing.
+//
+// This trampolines the per-frame emote-action-set input processor (uiMode==1). Its stock body forwards the
+// emote key to the client-run, stage-less ability route which produces NO 0xf801; we do the correct send
+// ourselves on the key edge and SKIP that broken body. Non-emote frames fall through unchanged (surgical).
+//
+// Emote-key detection: F1..F12 -> RAW slot 1..12 (account emotes are 13+), edge-triggered via GetAsyncKeyState
+// so exactly one 0xf801 is sent per press.
+// NOTE(live-test): F1..F12 == emote slot 1..12 is the stock default keybind. Ideally read the live
+// Emote01..Emote12 keybind (so a custom bind like U maps to its slot); reading the client keybind table is a
+// TODO — verify a press sends 0xf801 and that rebinds map correctly.
+
+// Walk TABLE2 (server-granted emotes) by RAW slot -> itemDefinitionId. 0 == not granted.
+//   HashList @ pc+0xF5A8 : listHead @ +0x10 ; node { itemDefId @ +0x04, next @ +0x08, slotId @ +0x18 }
+static uint32_t Emote_LookupItemDefBySlot(void* pc, uint32_t slot)
+{
+	void* node = *(void**)((char*)pc + 0xF5A8 + 0x10);
+	while (node)
+	{
+		if (*(uint32_t*)((char*)node + 0x18) == slot)
+			return *(uint32_t*)((char*)node + 0x04);
+		node = *(void**)((char*)node + 0x08);
+	}
+	return 0;
+}
+
 static long long(__fastcall* ProcessInput_EmoteActionSetActivate_orig)(void*, void*, void*, void*) = nullptr;
 static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, void* a2, void* a3, void* a4)
 {
@@ -1081,9 +1108,19 @@ static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, v
 				{
 					s_prevDown[i] = true;                          // consume this edge
 					uint32_t slot = (uint32_t)(i + 1);             // F1 -> slot 1 ... F12 -> slot 12
-					void* emoteObj = (char*)pc + 0xF500;           // ClientPcData + 0xF500
-					((Emote_PlayHotkeySlot_t)REBASE(0x1405C4510))(emoteObj, slot);
-					printf("[EmoteNvPatch] Emote hotkey F%d -> Emote_PlayHotkeySlot(slot=%u) (0xf801)\n", i + 1, slot);
+
+					uint32_t itemDef = Emote_LookupItemDefBySlot(pc, slot);  // TABLE2: server-granted emote
+					if (itemDef)
+					{
+						int animData = (int)itemDef;              // send-path reads *(int*)animData = itemDefinitionId
+						((LocalCharacter_PlayAnimationAndRequest_t)REBASE(0x140576F50))(0, &animData, 1); // plays + sends 0xf801
+						printf("[EmoteNvPatch] Emote hotkey F%d (slot=%u) -> PlayAnimationAndRequest itemDef=%u (0xf801)\n",
+							i + 1, slot, itemDef);
+					}
+					else
+					{
+						printf("[EmoteNvPatch] Emote hotkey F%d (slot=%u): no TABLE2 entry (not granted) - no send\n", i + 1, slot);
+					}
 					return 0;                                      // SKIP original broken ability route
 				}
 				if (!down) s_prevDown[i] = false;                  // reset edge when key released
@@ -1099,62 +1136,24 @@ static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, v
 }
 
 // =====================================================================================================
-// HOOK 2 — NIGHT VISION  (repairs the broken hotkey -> Abilities.InitAbility 0xa101 {abilityId:1111272})
+// HOOK 2 — NIGHT VISION (v2, live-verified)  (repairs the broken hotkey -> Abilities.InitAbility 0xa101)
 // =====================================================================================================
-// Dec-2016: Ability_ActivateCore BAIL-1a @0x140562e3f bails on NV member id 0; patched to send
-// Abilities.InitAbility 0xa101{1111272} directly so the intended NV toggle occurs.
+// Dec-2016 NV hotkey broken: NV instance member id 0 -> ActivateCore BAIL-1a @0x140562e3f. Patch forces the
+// member to 1111272 so the game's own 0xa101 send fires (the hand-built packet crashed the serializer at +0x38).
 //
 // Broken path: P -> Ability_ActivateByNameHash(localChar, 0x2be7f704) -> NV instance member id 0 ->
-// Ability_ActivateCore BAIL-1a -> no send. We divert ONLY nameHash 0x2be7f704 and send the packet directly;
-// every other ability nameHash calls the original unchanged. We do NOT byte-patch ActivateCore's BAIL-1a
-// because that path is shared by ALL abilities and would send abilityId=0 — the scoped hook is required.
+// Ability_ActivateCore BAIL-1a -> no send.
+//
+// WHY v1 (hand-built 0xa101 packet) crashed: the Abilities.InitAbility serializer dereferences packet+0x38 (a
+// null ctx we couldn't populate) -> access violation. v2 instead force-fixes the ONE broken field (the member
+// id) and lets the game build & send its own correct packet:
+//   1) resolve the NV ability instance via AbilityStore_LookupByNameHash @0x140565740 (store = pc+0xB618);
+//   2) write member-list head node (*(uint32_t*)node = 1111272) so the member id is > 0;
+//   3) fall through to the ORIGINAL — with member>0, ActivateCore passes BAIL-1a and the game sends the correct
+//      0xa101 itself (NV def flags 0x49 = RUN_ON_SERVER). The server's handler toggles NV (== /nv). No crash.
+// We divert ONLY nameHash 0x2be7f704; every other ability (and the NV fall-through) calls the original.
 static const int NV_NAME_HASH = 0x2be7f704;
 static const uint32_t NV_ABILITY_ID = 1111272;
-
-// Reproduces Ability_ActivateCore's Abilities.InitAbility packet (offsets disasm-verified).
-// The server keys on abilityId==1111272 + characterId (load-bearing); abilityReqId/ctx = 0.
-#pragma pack(push, 1)
-struct InitAbilityPkt {
-	void*     tmpl;          // 0x00  template  (@0x1420C7B70)
-	int32_t   opcode;        // 0x08  0xA1
-	int32_t   _pad0C;        // 0x0C
-	int32_t   sub;           // 0x10  1
-	int32_t   _pad14;        // 0x14
-	int32_t   flag;          // 0x18  1
-	int32_t   _pad1C;        // 0x1C
-	int32_t   z0;            // 0x20  0
-	uint32_t  abilityId;     // 0x24  1111272
-	int32_t   abilityReqId;  // 0x28  0
-	int32_t   _pad2C;        // 0x2C
-	uint64_t* pCharId;       // 0x30  -> local characterId
-	uint64_t  ctx0;          // 0x38  0
-	uint64_t  ctx1;          // 0x40  0
-	uint64_t  ctx2;          // 0x48  0
-};
-#pragma pack(pop)
-
-static void SendInitAbility_NV()
-{
-	void* pc = nullptr; void* zc = nullptr;
-	if (!EmoteNv_GetWorldState(&pc, &zc)) return;   // not in world: no-op (no crash)
-
-	uint64_t cid = *(uint64_t*)((char*)pc + 0x18);  // local player characterId (must outlive the synchronous send)
-
-	InitAbilityPkt p;
-	memset(&p, 0, sizeof(p));
-	p.tmpl         = (void*)REBASE(0x1420C7B70);
-	p.opcode       = 0xA1;
-	p.sub          = 1;
-	p.flag         = 1;
-	p.z0           = 0;
-	p.abilityId    = NV_ABILITY_ID;   // 1111272
-	p.abilityReqId = 0;
-	p.pCharId      = &cid;
-
-	((SendAbilitiesInitAbility_t)REBASE(0x14055AA40))(zc, &p, 0, 1); // ZoneConnection::SendAbilitiesInitAbility
-	printf("[EmoteNvPatch] NV hotkey -> Abilities.InitAbility 0xa101{abilityId=%u, cid=%llu}\n",
-		NV_ABILITY_ID, (unsigned long long)cid);
-}
 
 static void(__fastcall* Ability_ActivateByNameHash_orig)(long long localChar, int nameHash) = nullptr;
 static void __fastcall Ability_ActivateByNameHash_hook(long long localChar, int nameHash)
@@ -1163,15 +1162,30 @@ static void __fastcall Ability_ActivateByNameHash_hook(long long localChar, int 
 	{
 		__try
 		{
-			SendInitAbility_NV();   // skip the broken NV member / BAIL-1a path
+			void* pc = *(void**)REBASE(IDA_G_CLIENTPCDATA);   // in-world guard: NULL until in-world
+			if (pc)
+			{
+				void* store = (char*)pc + 0xB618;             // &g_ClientPcData->gapB4F8[288] (ability store)
+				void* INST = ((AbilityStore_LookupByNameHash_t)REBASE(0x140565740))(store, (uint32_t)NV_NAME_HASH);
+				if (INST)
+				{
+					void* node = *(void**)((char*)INST + 0x18); // member-list head
+					if (node)
+					{
+						*(uint32_t*)node = NV_ABILITY_ID;       // force member id (was 0 -> BAIL-1a)
+						printf("[EmoteNvPatch] NV hotkey: forced member id -> %u; letting game send 0xa101\n", NV_ABILITY_ID);
+					}
+				}
+			}
+			// null pc/INST/node: skip the write but STILL call the original (no crash, no send).
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
 		{
 			printf("[EmoteNvPatch] NV hook excepted, caught and returned.\n");
 		}
-		return;
+		// DO NOT return: fall through so the game's own correct 0xa101 send fires.
 	}
-	Ability_ActivateByNameHash_orig(localChar, nameHash); // every other ability unaffected
+	Ability_ActivateByNameHash_orig(localChar, nameHash); // NV (now member>0) + every other ability unaffected
 }
 
 bool VCPatcher::Init()

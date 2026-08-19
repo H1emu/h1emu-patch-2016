@@ -1137,10 +1137,90 @@ static void EmoteNv_DiagPress(void* pc, int fkey, uint32_t slot, uint32_t itemDe
 #endif
 }
 
+#if EMOTENV_LOG
+// Guarded raw read: copies n bytes src->dst; returns false (no crash) if src is unreadable.
+static bool EmoteNv_SafeRead(const void* src, void* dst, size_t n)
+{
+	__try { memcpy(dst, src, n); return true; }
+	__except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+#endif
+
+// Diagnostic (compiled only when EMOTENV_LOG=1): dump this hook's own 4 args (a1..a4) on EVERY call, before
+// the raw-F-key/slot logic, so we can identify which arg/field carries the FIRED emote's identity — the
+// client can't run on a stock DLL (unrelated zoning patches live here), so a Frida-on-stock capture is out,
+// but the hook already receives these exact args. Operator presses F6(Laugh)/F7(NoWay)/F1(ListenToTheCrowd);
+// the value that DIFFERS across the three presses is the emote-identity input. Read-only/observe-only; every
+// dereference is SEH-guarded so a bad pointer cannot crash the client. Production (EMOTENV_LOG=0) => no-op.
+static void EmoteNv_DiagArgs(void* ret, void* a1, void* a2, void* a3, void* a4)
+{
+#if EMOTENV_LOG
+	static int s_call = 0;
+	int callNo = ++s_call;
+	FILE* f = fopen("emote_diag.log", "a");
+	if (!f) return;
+
+	uintptr_t base = (uintptr_t)0x140000000 + g_emoteNvDelta;   // live H1Z1.exe base
+	fprintf(f, "==== ARG DUMP #%d  ProcessInput_EmoteActionSetActivate ====\n", callNo);
+	fprintf(f, "  retaddr=%p  base+0x%llX  (IDA 0x%llX)\n",
+		ret, (unsigned long long)((uintptr_t)ret - base), (unsigned long long)((uintptr_t)ret - g_emoteNvDelta));
+
+	void* args[4] = { a1, a2, a3, a4 };
+	for (int i = 0; i < 4; ++i)
+	{
+		void* p = args[i];
+		fprintf(f, "  a%d = %p  asU32=0x%08X (%u)\n",
+			i + 1, p, (uint32_t)(uintptr_t)p, (uint32_t)(uintptr_t)p);
+
+		uint64_t probe;
+		if (!EmoteNv_SafeRead(p, &probe, sizeof(probe)))
+		{
+			fprintf(f, "        (not a readable pointer - likely an immediate/nameHash)\n");
+			continue;
+		}
+		// readable: dump the requested fields (each guarded independently)
+		static const uint32_t offs32[5] = { 0x00, 0x04, 0x08, 0x10, 0x18 };
+		for (int k = 0; k < 5; ++k)
+		{
+			uint32_t v;
+			if (EmoteNv_SafeRead((char*)p + offs32[k], &v, sizeof(v)))
+				fprintf(f, "        u32 +0x%02X = 0x%08X (%u)\n", offs32[k], v, v);
+			else
+				fprintf(f, "        u32 +0x%02X = <unreadable>\n", offs32[k]);
+		}
+		uint64_t v0, v8;
+		if (EmoteNv_SafeRead((char*)p + 0x00, &v0, sizeof(v0)))
+			fprintf(f, "        u64 +0x00 = 0x%016llX\n", (unsigned long long)v0);
+		if (EmoteNv_SafeRead((char*)p + 0x08, &v8, sizeof(v8)))
+			fprintf(f, "        u64 +0x08 = 0x%016llX\n", (unsigned long long)v8);
+
+		// 0x40-byte hex dump (guarded); if the whole read fails, fall back to byte-by-byte guarded reads.
+		unsigned char buf[0x40];
+		bool whole = EmoteNv_SafeRead(p, buf, sizeof(buf));
+		fprintf(f, "        hex +0x00..0x40:");
+		for (int b = 0; b < 0x40; ++b)
+		{
+			if ((b % 16) == 0) fprintf(f, "\n          +0x%02X: ", b);
+			unsigned char c;
+			bool ok = whole ? (c = buf[b], true) : EmoteNv_SafeRead((char*)p + b, &c, 1);
+			if (ok) fprintf(f, "%02X ", c);
+			else    fprintf(f, "?? ");
+		}
+		fprintf(f, "\n");
+	}
+	fprintf(f, "\n");
+	fclose(f);
+#else
+	(void)ret; (void)a1; (void)a2; (void)a3; (void)a4;
+#endif
+}
+
 static long long(__fastcall* ProcessInput_EmoteActionSetActivate_orig)(void*, void*, void*, void*) = nullptr;
 static long long __fastcall ProcessInput_EmoteActionSetActivate_hook(void* a1, void* a2, void* a3, void* a4)
 {
 	static bool s_prevDown[12] = { false };   // per-slot edge state for F1..F12
+
+	EmoteNv_DiagArgs(_ReturnAddress(), a1, a2, a3, a4);   // diagnostic arg dump (no-op in production; logic unchanged)
 
 	__try
 	{

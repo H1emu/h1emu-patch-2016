@@ -1052,12 +1052,13 @@ typedef void*(__fastcall* AbilityStore_LookupByNameHash_t)(void* store, uint32_t
 // ---- keybind-aware emote resolution (v3, re-audited a041f64) -----------------------------------------
 // The fired emote's identity is its nameHash = the ForgeLight/JOAAT hash of the InputProfile action name
 // (e.g. "Laugh"). We do NOT hash at runtime; re baked the nameHash -> emote itemDefinitionId table below
-// (34 render-verified emotes, sorted ascending by nameHash; validated vs live ground truth, e.g. Laugh->3281,
+// (35 render-verified emotes, sorted ascending by nameHash; validated vs live ground truth, e.g. Laugh->3281,
 // NoWay->3282, Point->3283, Salute->3284, WaveHello->3276). show=0 dev-placeholder emotes and no-item emotes
 // (e.g. HandsUp, DoubleBird, No, Cold, Listen) are intentionally NOT in the table -> nameHash not found ->
 // fall through/no-op by design.
 static const struct EmoteMapEntry { uint32_t nameHash; int32_t itemDef; const char* name; } kEmoteMap[] = {
 	{ 0x10F0567A, 2438, "Beg" },
+	{ 0x1980E542, 3350, "Wave" },              // F11 fix: item 3350 is really "Wave" (WaveHelloB is an alias, same clip)
 	{ 0x1F1C05F5, 2006, "ScrewYou2" },
 	{ 0x2186D966, 1999, "BirdCannon" },
 	{ 0x226F13A2, 3155, "ListenToTheCrowd" },

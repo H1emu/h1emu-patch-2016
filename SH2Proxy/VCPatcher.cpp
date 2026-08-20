@@ -1052,7 +1052,7 @@ typedef void*(__fastcall* AbilityStore_LookupByNameHash_t)(void* store, uint32_t
 // ---- keybind-aware emote resolution (v3, re-audited a041f64) -----------------------------------------
 // The fired emote's identity is its nameHash = the ForgeLight/JOAAT hash of the InputProfile action name
 // (e.g. "Laugh"). We do NOT hash at runtime; re baked the nameHash -> emote itemDefinitionId table below
-// (35 render-verified emotes, sorted ascending by nameHash; validated vs live ground truth, e.g. Laugh->3281,
+// (36 render-verified emotes, sorted ascending by nameHash; validated vs live ground truth, e.g. Laugh->3281,
 // NoWay->3282, Point->3283, Salute->3284, WaveHello->3276). show=0 dev-placeholder emotes and no-item emotes
 // (e.g. HandsUp, DoubleBird, No, Cold, Listen) are intentionally NOT in the table -> nameHash not found ->
 // fall through/no-op by design.
@@ -1080,6 +1080,14 @@ static const struct EmoteMapEntry { uint32_t nameHash; int32_t itemDef; const ch
 	{ 0xA2D40486, 2004, "PelvicThrust" },
 	{ 0xA6CF6426, 3348, "Violin" },
 	{ 0xA9BEC11F, 3283, "Point" },
+	{ 0xB490E0F7, 5376, "DoubleBird" },        // server-only item (ITEM_TYPE-53 id 5376, PARAM1=4 -> anim 4;
+	                                           //   ACTIVATABLE_ABILITY_ID 1111392). The client does NOT know item
+	                                           //   5376 (Command.ItemDefinitions is disabled; not in packed
+	                                           //   ClientItemDefinitions), so the LOCAL play may not resolve it -
+	                                           //   but LocalCharacter_PlayAnimationAndRequest sends 0xf801 {5376}
+	                                           //   UNCONDITIONALLY (verified: send gated only on sendToServer=1,
+	                                           //   itemDef copied raw, no client-item lookup/bail), so the server's
+	                                           //   Animation.Play 0xf802 round-trip renders DoubleBird for the emoter.
 	{ 0xB50423E3, 2441, "Flex" },
 	{ 0xB5678C7E, 3276, "WaveHello" },
 	{ 0xC0805836, 2439, "Fisticuffs" },

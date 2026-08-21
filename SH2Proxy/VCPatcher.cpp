@@ -1049,89 +1049,84 @@ typedef void(__fastcall* LocalCharacter_PlayAnimationAndRequest_t)(void* a0, int
 // NV: AbilityStore_LookupByNameHash @0x140565740 — resolves the ability instance for a nameHash.
 typedef void*(__fastcall* AbilityStore_LookupByNameHash_t)(void* store, uint32_t nameHash);
 
-// ---- keybind-aware emote resolution (v3, re-audited a041f64) -----------------------------------------
-// The fired emote's identity is its nameHash = the ForgeLight/JOAAT hash of the InputProfile action name
-// (e.g. "Laugh"). We do NOT hash at runtime; re baked the nameHash -> emote itemDefinitionId table below
-// (36 render-verified emotes, sorted ascending by nameHash; validated vs live ground truth, e.g. Laugh->3281,
-// NoWay->3282, Point->3283, Salute->3284, WaveHello->3276). show=0 dev-placeholder emotes and no-item emotes
-// (e.g. HandsUp, DoubleBird, No, Cold, Listen) are intentionally NOT in the table -> nameHash not found ->
-// fall through/no-op by design.
-static const struct EmoteMapEntry { uint32_t nameHash; int32_t itemDef; const char* name; } kEmoteMap[] = {
-	{ 0x10F0567A, 2438, "Beg" },
-	{ 0x1980E542, 3350, "Wave" },              // F11 fix: item 3350 is really "Wave" (WaveHelloB is an alias, same clip)
-	{ 0x1F1C05F5, 2006, "ScrewYou2" },
-	{ 0x2186D966, 1999, "BirdCannon" },
-	{ 0x226F13A2, 3155, "ListenToTheCrowd" },
-	{ 0x2DD475B9, 2000, "BootySlap" },
-	{ 0x323AC39D, 3281, "Laugh" },
-	{ 0x364023C5, 2440, "Hump" },
-	{ 0x39816F62, 2007, "ShimmyDance" },
-	{ 0x412E9EAA, 3819, "RaiseCrown" },
-	{ 0x433A86B6, 3277, "Applause" },
-	{ 0x4E08AED5, 3287, "WaveBye" },
-	{ 0x52BAA064, 3350, "WaveHelloB" },
-	{ 0x64A654B4, 3288, "AirGuitar" },
-	{ 0x6A398C1B, 2001, "CrotchChop" },
-	{ 0x6F33E763, 3279, "CutThroat" },
-	{ 0x71312F42, 3154, "FlexPoint" },
-	{ 0x77DCC6C1, 3291, "Bow" },
-	{ 0x78AD4259, 3282, "NoWay" },
-	{ 0x86637979, 3280, "TeaBag" },
-	{ 0xA2D40486, 2004, "PelvicThrust" },
-	{ 0xA6CF6426, 3348, "Violin" },
-	{ 0xA9BEC11F, 3283, "Point" },
-	{ 0xB490E0F7, 5376, "DoubleBird" },        // server-only item (ITEM_TYPE-53 id 5376, PARAM1=4 -> anim 4;
-	                                           //   ACTIVATABLE_ABILITY_ID 1111392). The client does NOT know item
-	                                           //   5376 (Command.ItemDefinitions is disabled; not in packed
-	                                           //   ClientItemDefinitions), so the LOCAL play may not resolve it -
-	                                           //   but LocalCharacter_PlayAnimationAndRequest sends 0xf801 {5376}
-	                                           //   UNCONDITIONALLY (verified: send gated only on sendToServer=1,
-	                                           //   itemDef copied raw, no client-item lookup/bail), so the server's
-	                                           //   Animation.Play 0xf802 round-trip renders DoubleBird for the emoter.
-	{ 0xB50423E3, 2441, "Flex" },
-	{ 0xB5678C7E, 3276, "WaveHello" },
-	{ 0xC0805836, 2439, "Fisticuffs" },
-	{ 0xC0B85592, 3342, "TeabagLight" },
-	{ 0xC7B4BEFC, 3285, "Agree" },
-	{ 0xD89D0FFC, 3284, "Salute" },
-	{ 0xDEEBB36C, 3278, "Beckon" },
-	{ 0xE2E985D4, 2002, "CryBaby" },
-	{ 0xE2EC3B6E, 3286, "DanceA" },
-	{ 0xE550423D, 2005, "SarcasmDance" },
-	{ 0xEB330C10, 2008, "WereNotWorthy" },
-	{ 0xECB157F4, 2003, "Grind" },
-};
-static const int kEmoteMapCount = (int)(sizeof(kEmoteMap) / sizeof(kEmoteMap[0]));
+// ---- DYNAMIC emote resolution (v4; re doc emote-dynamic-resolution.md / 852be7c) --------------------
+// No hardcoded table: resolve nameHash -> emote itemDefinitionId at RUNTIME by walking the client's RESIDENT
+// emote-availability map, so new/modded emotes work with ZERO patch changes (the server owns the mapping).
+//
+// Resident structure: emoteObj = ClientPcData + 0xF500 (populated by EmoteAvailabilityMap_ReadFromPacket
+// @0x140381090 from SendSelf.skinItems.emotes). The emote-availability HashList sub-object lives at
+// emoteObj + 0xA8 = pc + 0xF5A8. Full doubly-linked node list: head = *(pc + 0xF5A8 + 0x10); walk via
+// node.listNext @ +0x08. EmoteAvailabilityNode: nameHash @ +0x00 (server-tagged), itemDef @ +0x04 (value),
+// listNext @ +0x08, slotId @ +0x18 (emoteAnimSlotId key). This walk IS the emote-membership test.
+//
+// *** CUSTOM h1emu SERVER DEPENDENCY ***: node+0x00 is the emote-availability entry's normally-UNUSED
+// `unknownDword2` field, which VANILLA leaves 0 (the client never reads it). The h1emu server CUSTOM-tags it
+// with flhash(clientActionName). So this dynamic nameHash->itemDef resolution ONLY works against an h1emu
+// server that tags unknownDword2; on a vanilla/untagged server the field is 0, every lookup misses, and
+// emotes no-op. That is EXPECTED until the paired server change lands (deploy this WITH the server tagging).
+//
+// HEAD-OFFSET NOTE (load-bearing; verify via ida-pro-mcp on the 9.4 DB): the dynamic-resolution doc writes
+// the head as *(map+0x10) with map=ClientPcData+0xF500. Cross-checking emote-fkey-final-gate.md (buckets @
+// pc+0xF5D0 = HashList-dest+0x28  =>  HashList-dest = pc+0xF5A8) AND the v2 live-confirmed walk both place the
+// actual full-list head at *(pc+0xF5A8+0x10) — the two agree on buckets (0xF5D0) and differ only on the head
+// base (0xF500 vs 0xF5A8); the live-confirmed + bucket-geometry value 0xF5A8 is used here. ida-pro-mcp is not
+// available in this (patch) workspace; the diagnostic build dumps the full walk from this head so the capture
+// run confirms it empirically (sane nodes: itemDef in ~1999..5376, slotId 1..12). If the diag shows 0/garbage
+// nodes, flip EMOTE_HASHLIST_OFF to 0xF500.
+#define EMOTE_HASHLIST_OFF 0xF5A8   // emote-availability HashList sub-object = ClientPcData(pc) + 0xF500 + 0xA8
 
-// nameHash -> emote itemDefinitionId (0 = not an emote / not in table). Sorted table -> binary search.
-static int32_t ResolveEmoteItemDef(uint32_t nameHash)
+// Walk the resident emote-availability map for a node whose nameHash == the fired nameHash. HIT -> itemDef;
+// MISS (empty/untagged map, not in world, or not an emote) -> 0 -> caller falls through to the original.
+// SEH-guarded: a bad/empty map is treated as a miss, never a crash.
+static int32_t ResolveEmoteItemDefDynamic(void* pc, uint32_t nameHash)
 {
-	int lo = 0, hi = kEmoteMapCount - 1;
-	while (lo <= hi)
+	if (!pc || nameHash == 0) return 0;   // nameHash 0 = vanilla/untagged node; never a real fired emote
+	__try
 	{
-		int mid = (lo + hi) >> 1;
-		uint32_t h = kEmoteMap[mid].nameHash;
-		if (h == nameHash) return kEmoteMap[mid].itemDef;
-		if (h < nameHash) lo = mid + 1; else hi = mid - 1;
+		void* node = *(void**)((char*)pc + EMOTE_HASHLIST_OFF + 0x10);   // full-list head = *(pc+0xF5A8+0x10)
+		for (int guard = 0; node && guard < 256; ++guard)               // guard: never loop on a corrupt list
+		{
+			if (*(uint32_t*)((char*)node + 0x00) == nameHash)            // server-tagged nameHash
+				return *(int32_t*)((char*)node + 0x04);                  // itemDefinitionId
+			node = *(void**)((char*)node + 0x08);                        // listNext
+		}
 	}
+	__except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 	return 0;
 }
 
 #if EMOTENV_LOG
-static const char* EmoteName(uint32_t nameHash)
-{
-	for (int i = 0; i < kEmoteMapCount; ++i) if (kEmoteMap[i].nameHash == nameHash) return kEmoteMap[i].name;
-	return nullptr;
-}
-// Diagnostic (EMOTENV_LOG=1 only): append every emote-nameHash press to emote_diag.log with the resolved
-// itemDef + emote name (or "no map entry -> no-op"). Observe-only; writes to file via fopen, no console.
-static void EmoteNv_DiagEmote(uint32_t nameHash, int32_t itemDef)
+// Diagnostic (EMOTENV_LOG=1 only): per non-NV press log the fired nameHash + hit/miss + resolved itemDef, and
+// ONCE (first populated map) dump the full resident-map walk (node, nameHash, itemDef, slotId) so the head/node
+// offsets AND the server's unknownDword2 nameHash tagging can be verified end-to-end. File-only (no console).
+static void EmoteNv_DiagResolve(void* pc, uint32_t nameHash, int32_t itemDef)
 {
 	FILE* f = fopen("emote_diag.log", "a");
 	if (!f) return;
-	const char* nm = EmoteName(nameHash);
-	if (itemDef) fprintf(f, "EMOTE nameHash=0x%08X -> itemDef=%d  (%s)\n", nameHash, itemDef, nm ? nm : "?");
-	else         fprintf(f, "EMOTE nameHash=0x%08X -> (no map entry -> no-op)\n", nameHash);
+	fprintf(f, "RESOLVE nameHash=0x%08X -> %s itemDef=%d\n", nameHash, itemDef ? "HIT" : "MISS", itemDef);
+	static bool s_dumped = false;
+	if (!s_dumped && pc)
+	{
+		__try
+		{
+			void* node = *(void**)((char*)pc + EMOTE_HASHLIST_OFF + 0x10);   // head = *(pc+0xF5A8+0x10)
+			if (node)
+			{
+				fprintf(f, "  --- resident EmoteAvailabilityMap (head *(pc+0xF5A8+0x10)) ---\n");
+				int n = 0;
+				for (; node && n < 64; ++n)
+				{
+					fprintf(f, "    [%2d] node=%p nameHash=0x%08X itemDef=%d slotId=%u\n",
+						n, node, *(uint32_t*)((char*)node + 0x00),
+						*(int32_t*)((char*)node + 0x04), *(uint32_t*)((char*)node + 0x18));
+					node = *(void**)((char*)node + 0x08);   // listNext
+				}
+				fprintf(f, "    (%d nodes; nameHash=0 => server has NOT tagged unknownDword2 yet)\n", n);
+				s_dumped = true;   // dump only after we've seen a populated map
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) { fprintf(f, "  (map walk excepted)\n"); }
+	}
 	fclose(f);
 }
 #endif
@@ -1148,15 +1143,16 @@ static void EmoteNv_DiagEmote(uint32_t nameHash, int32_t itemDef)
 // original untouched.
 //
 // EMOTE (repairs the broken hotkey -> Animation.Request 0xf801):
-//   The fired emote's identity is its nameHash (hash of the InputProfile action name, e.g. "Laugh"). This is
-//   why the earlier raw-F-key->TABLE2-slot patch mis-mapped every key: it ignored the keybind and played the
-//   server's fixed slot order. v3 resolves nameHash -> emote itemDefinitionId via the baked kEmoteMap and
-//   calls LocalCharacter_PlayAnimationAndRequest(0,&itemDef,1) @0x140576F50 — plays locally AND sends 0xf801
-//   {itemDef} (via SendAnimationRequest @0x140576880 -> SendPacket @0x14063C180); server broadcasts
-//   Animation.Play 0xf802 (no grant gate — plays granted or not; confirmed no server-side grant check). This
-//   is keybind-aware by construction: any key bound to an emote action (incl. non-F keys) resolves correctly,
-//   because the GAME did the key->nameHash resolution before this call. nameHash not in kEmoteMap -> fall
-//   through to the original (untouched). 5 emote names have no item and no-op by design.
+//   The fired emote's identity is its nameHash (hash of the InputProfile action name, e.g. "Laugh"), received
+//   as the hook arg. v4 resolves nameHash -> emote itemDefinitionId DYNAMICALLY by walking the client's
+//   RESIDENT emote-availability map (ResolveEmoteItemDefDynamic; see block above) — NO hardcoded table, so
+//   new/modded emotes work with zero patch changes and the server owns the mapping. HIT ->
+//   LocalCharacter_PlayAnimationAndRequest(0,&itemDef,1) @0x140576F50 (plays locally AND sends 0xf801 {itemDef}
+//   via SendAnimationRequest @0x140576880 -> SendPacket @0x14063C180); server broadcasts Animation.Play 0xf802
+//   (no grant gate). The walk IS the emote-membership test: MISS -> not an emote (NV/weapon/other) -> fall
+//   through to the original (untouched). Keybind-aware by construction (the GAME did key->nameHash first).
+//   *** Depends on the h1emu server tagging each emote's unknownDword2 = flhash(actionName); vanilla = 0 =>
+//   every lookup misses (emotes no-op). Deploy WITH the paired server change. ***
 //
 // NV (repairs the broken hotkey -> Abilities.InitAbility 0xa101 {abilityId:1111272}):
 //   NV instance member id is 0 -> Ability_ActivateCore BAIL-1a @0x140562e3f -> no send. Force-fix that ONE
@@ -1200,24 +1196,21 @@ static void __fastcall Ability_ActivateByNameHash_hook(long long localChar, int 
 		}
 		// DO NOT return: fall through so the game's own correct 0xa101 send fires.
 	}
-	else   // EMOTE (v3): keybind-aware nameHash -> itemDef -> direct play+send; non-emotes fall through.
+	else   // EMOTE (v4-dynamic): walk the resident emote-availability map for nameHash -> itemDef; non-emotes fall through.
 	{
-		int32_t itemDef = ResolveEmoteItemDef((uint32_t)nameHash);
+		void* pc = *(void**)REBASE(IDA_G_CLIENTPCDATA);              // ClientPcData (NULL until in-world)
+		int32_t itemDef = ResolveEmoteItemDefDynamic(pc, (uint32_t)nameHash);   // resident-map walk = membership test
 #if EMOTENV_LOG
-		if (itemDef) EmoteNv_DiagEmote((uint32_t)nameHash, itemDef);   // only log recognized emote presses
+		EmoteNv_DiagResolve(pc, (uint32_t)nameHash, itemDef);        // log fired nameHash + hit/miss + itemDef
 #endif
-		if (itemDef)
+		if (itemDef)   // itemDef != 0 implies pc != NULL (ResolveEmoteItemDefDynamic returns 0 when pc is null)
 		{
 			__try
 			{
-				void* pc = *(void**)REBASE(IDA_G_CLIENTPCDATA);       // in-world guard (NULL until in-world)
-				if (pc)
-				{
-					int animData = itemDef;                           // send-path reads *(int*)animData = itemDefinitionId
-					((LocalCharacter_PlayAnimationAndRequest_t)REBASE(0x140576F50))(0, &animData, 1); // plays + sends 0xf801
-					ENV_LOG("[EmoteNvPatch] Emote nameHash=0x%08X -> PlayAnimationAndRequest itemDef=%d (0xf801)\n",
-						(uint32_t)nameHash, itemDef);
-				}
+				int animData = itemDef;                             // send-path reads *(int*)animData = itemDefinitionId
+				((LocalCharacter_PlayAnimationAndRequest_t)REBASE(0x140576F50))(0, &animData, 1); // plays + sends 0xf801
+				ENV_LOG("[EmoteNvPatch] Emote nameHash=0x%08X -> PlayAnimationAndRequest itemDef=%d (0xf801)\n",
+					(uint32_t)nameHash, itemDef);
 			}
 			__except (EXCEPTION_EXECUTE_HANDLER)
 			{
@@ -1225,7 +1218,7 @@ static void __fastcall Ability_ActivateByNameHash_hook(long long localChar, int 
 			}
 			return;                                                   // handled the emote; skip the broken original route
 		}
-		// nameHash not a known emote -> fall through to the original (all other abilities unaffected).
+		// MISS -> not a (tagged) emote (weapons/other abilities) -> fall through to the original, unaffected.
 	}
 	Ability_ActivateByNameHash_orig(localChar, nameHash); // NV (now member>0) + every non-emote ability unaffected
 }

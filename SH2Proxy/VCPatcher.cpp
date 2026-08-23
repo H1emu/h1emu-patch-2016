@@ -19,6 +19,14 @@
 #define CONSOLE_ENABLED
 #endif
 
+// DIAGNOSTIC in-process crash-trace logger. UNDEFINED by default (normal build unaffected); build the crash
+// diagnostic with /DDIAG_CRASHLOG. When defined: installs a first-chance VECTORED exception handler that logs
+// every fault (code, faulting instruction, AV read/write + data addr, module-relative backtrace) to
+// h1-crash-trace.log and lets it crash naturally (EXCEPTION_CONTINUE_SEARCH); AND converts the two crash-site
+// blockers (0x14032DC60 / 0x140C06FD0) from block-the-crash to LOG-caller-chain-then-call-original so we
+// capture which packet handler tripped the assert even when the terminate is an uncatchable fastfail.
+// #define DIAG_CRASHLOG
+
 using namespace std;
 
 static bool consoleShowing = false;
@@ -665,6 +673,168 @@ void OnIntentionalCrash1() {
 	printf("Should have crashed, but will continue executing, return address is: %p\n", _ReturnAddress());
 }
 
+// ============================================================================================================
+// ===============   DIAG_CRASHLOG — in-process crash-trace logger (VEH + log-then-original hooks)   ===========
+// ============================================================================================================
+// Frida can't capture the zone-in crash (attach -> "Process Terminated", no exception, no hook fires:
+// BattlEye/anti-tamper kills the injected process, or the fatal path is an uncatchable fastfail-style
+// terminate). The dinput8 patch is already loaded and tolerated, so we capture the crash from IN-PROCESS:
+// a first-chance VECTORED handler logs any AV (incl. the 0xBADBEEF null-write) and lets it crash; the two
+// crash-site hooks log the CALLER chain + args BEFORE calling the original (which then terminates), so we
+// still learn which handler tripped it even for a fastfail the VEH can't see. All addresses are logged
+// module-relative (H1Z1.exe+0xOFF; IDA VA = 0x140000000 + OFF). Everything here is gated by DIAG_CRASHLOG.
+#ifdef DIAG_CRASHLOG
+static const wchar_t* kCrashLogPath = L"C:\\Users\\h1\\Desktop\\h1-crash-trace.log";
+static uintptr_t g_mainBase = 0;                 // GetModuleHandleW(NULL) = H1Z1.exe base
+static CRITICAL_SECTION g_crashCs;
+static bool g_crashCsReady = false;
+static __declspec(thread) int g_inCrashLog = 0;  // per-thread reentrancy guard (logging must not recurse in VEH)
+
+// Append-open + WRITE + FlushFileBuffers + close PER call so the trace survives a hard terminate. Also mirror
+// to the debugger via OutputDebugStringA.
+static void CrashWriteRaw(const char* text)
+{
+	HANDLE h = CreateFileW(kCrashLogPath, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+		OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h != INVALID_HANDLE_VALUE)
+	{
+		DWORD wrote = 0;
+		WriteFile(h, text, (DWORD)strlen(text), &wrote, NULL);
+		FlushFileBuffers(h);   // force to disk before we return (survive the terminate)
+		CloseHandle(h);
+	}
+	OutputDebugStringA(text);
+}
+
+// Format an address module-relative: "<module-basename>+0xOFF" (H1Z1.exe+0xOFF for main-module frames).
+static void CrashFmtAddr(char* out, size_t outsz, void* addr)
+{
+	HMODULE m = NULL;
+	if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		(LPCWSTR)addr, &m) && m)
+	{
+		char path[MAX_PATH] = { 0 };
+		GetModuleFileNameA(m, path, MAX_PATH);
+		const char* bn = path;
+		for (const char* p = path; *p; ++p) if (*p == '\\' || *p == '/') bn = p + 1;
+		_snprintf_s(out, outsz, _TRUNCATE, "%s+0x%llX", bn, (unsigned long long)((uintptr_t)addr - (uintptr_t)m));
+	}
+	else
+	{
+		_snprintf_s(out, outsz, _TRUNCATE, "0x%llX", (unsigned long long)(uintptr_t)addr);
+	}
+}
+
+// Timestamped single line.
+static void CrashLogf(const char* fmt, ...)
+{
+	char body[3072];
+	va_list ap; va_start(ap, fmt);
+	_vsnprintf_s(body, sizeof(body), _TRUNCATE, fmt, ap);
+	va_end(ap);
+	SYSTEMTIME st; GetLocalTime(&st);
+	char line[3200];
+	_snprintf_s(line, sizeof(line), _TRUNCATE, "[%02d:%02d:%02d.%03d] %s\n",
+		st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, body);
+	bool locked = g_crashCsReady;
+	if (locked) EnterCriticalSection(&g_crashCs);
+	CrashWriteRaw(line);
+	if (locked) LeaveCriticalSection(&g_crashCs);
+}
+
+// Capture + log a module-relative backtrace as ONE flushed block. framesToSkip drops the logger/dispatch frames.
+static void CrashLogBacktrace(ULONG framesToSkip)
+{
+	void* frames[62];
+	USHORT n = RtlCaptureStackBackTrace(framesToSkip, 62, frames, NULL);
+	char buf[62 * 96 + 64];
+	int off = _snprintf_s(buf, sizeof(buf), _TRUNCATE, "    backtrace (%u frames):\n", n);
+	for (USHORT i = 0; i < n && off > 0 && off < (int)sizeof(buf) - 128; ++i)
+	{
+		char a[160]; CrashFmtAddr(a, sizeof(a), frames[i]);
+		int w = _snprintf_s(buf + off, sizeof(buf) - off, _TRUNCATE, "      [%02u] %s\n", i, a);
+		if (w <= 0) break;
+		off += w;
+	}
+	bool locked = g_crashCsReady;
+	if (locked) EnterCriticalSection(&g_crashCs);
+	CrashWriteRaw(buf);
+	if (locked) LeaveCriticalSection(&g_crashCs);
+}
+
+// First-chance VECTORED exception handler: log-only, then EXCEPTION_CONTINUE_SEARCH (let it crash naturally).
+static LONG CALLBACK CrashVeh(EXCEPTION_POINTERS* ep)
+{
+	if (g_inCrashLog) return EXCEPTION_CONTINUE_SEARCH;   // don't recurse if logging itself faults
+	EXCEPTION_RECORD* er = ep ? ep->ExceptionRecord : NULL;
+	if (!er) return EXCEPTION_CONTINUE_SEARCH;
+	DWORD code = er->ExceptionCode;
+	// Skip pure-noise debug codes (thread-name / OutputDebugString) so the real fault isn't buried.
+	if (code == 0x40010006 /*DBG_PRINTEXCEPTION_C*/ || code == 0x4001000A /*DBG_PRINTEXCEPTION_WIDE_C*/ ||
+		code == 0x406D1388 /*MS_VC thread name*/)
+		return EXCEPTION_CONTINUE_SEARCH;
+
+	g_inCrashLog = 1;
+	__try
+	{
+		char faultAddr[160]; CrashFmtAddr(faultAddr, sizeof(faultAddr), er->ExceptionAddress);
+		char detail[192]; detail[0] = 0;
+		if (code == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2)
+		{
+			ULONG_PTR op = er->ExceptionInformation[0];
+			const char* what = op == 0 ? "READ" : op == 1 ? "WRITE" : op == 8 ? "EXEC" : "?";
+			_snprintf_s(detail, sizeof(detail), _TRUNCATE, " | AV %s data=0x%llX",
+				what, (unsigned long long)er->ExceptionInformation[1]);
+		}
+		// Note C++ EH (0xE06D7363) is frequent+benign; still logged (compact) so the sequence is visible.
+		bool benignCpp = (code == 0xE06D7363);
+		CrashLogf("*** EXCEPTION code=0x%08X flags=0x%X at %s%s%s",
+			code, er->ExceptionFlags, faultAddr, detail, benignCpp ? " (C++ EH)" : "");
+		if (!benignCpp)
+			CrashLogBacktrace(2);   // skip CrashVeh + ntdll dispatch frames
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) { /* logging faulted; swallow */ }
+	g_inCrashLog = 0;
+	return EXCEPTION_CONTINUE_SEARCH;   // log-only — never handle; let the process crash as it would.
+}
+
+// Crash-site hook @0x14032DC60 (execUnrecoverableError; the 0xBADBEEF path). DIAG = log caller+args THEN
+// call the original (let it proceed to terminate). x64 __fastcall; forward rcx/rdx/r8/r9.
+static void(__fastcall* g_execUnrecoverableError_orig)(void*, void*, void*, void*) = nullptr;
+static void __fastcall ExecUnrecoverableError_diag(void* a1, void* a2, void* a3, void* a4)
+{
+	char ret[160]; CrashFmtAddr(ret, sizeof(ret), _ReturnAddress());
+	CrashLogf("### CRASH-SITE execUnrecoverableError (H1Z1.exe+0x32DC60) caller=%s args=(%p,%p,%p,%p)",
+		ret, a1, a2, a3, a4);
+	CrashLogBacktrace(1);
+	g_execUnrecoverableError_orig(a1, a2, a3, a4);   // let it crash (do NOT block in the diag build)
+}
+
+// Crash-site hook @0x140C06FD0 (exception inside this fn). DIAG = log caller+args THEN call original.
+static void(__fastcall* g_crash140C06FD0_orig)(void*, void*, void*, void*) = nullptr;
+static void __fastcall Crash140C06FD0_diag(void* a1, void* a2, void* a3, void* a4)
+{
+	char ret[160]; CrashFmtAddr(ret, sizeof(ret), _ReturnAddress());
+	CrashLogf("### CRASH-SITE sub_140C06FD0 (H1Z1.exe+0xC06FD0) caller=%s args=(%p,%p,%p,%p)",
+		ret, a1, a2, a3, a4);
+	CrashLogBacktrace(1);
+	g_crash140C06FD0_orig(a1, a2, a3, a4);           // let it crash
+}
+
+// Install the VEH + logger. Called once from VCPatcher::Init() under DIAG_CRASHLOG.
+static void CrashLog_Install()
+{
+	InitializeCriticalSection(&g_crashCs);
+	g_crashCsReady = true;
+	g_mainBase = (uintptr_t)GetModuleHandleW(NULL);
+	AddVectoredExceptionHandler(1 /*first, first-chance*/, CrashVeh);
+	CrashLogf("==================== DIAG_CRASHLOG session start ====================");
+	CrashLogf("H1Z1.exe base=0x%llX  (module-relative frames: H1Z1.exe+0xOFF ; IDA VA = 0x140000000 + OFF)",
+		(unsigned long long)g_mainBase);
+	CrashLogf("VEH installed (first-chance, log-only); crash-site hooks 0x32DC60 / 0xC06FD0 = log-then-original.");
+}
+#endif // DIAG_CRASHLOG
+
 static void(*SpawnLightweightPc_orig)(BaseClient* a1, LightweightPc* a2);
 static void SpawnLightweightPc(BaseClient* a1, LightweightPc* a2) {
 	printf("********SpawnLightweightPcReadFromPacket\n\n");
@@ -1227,10 +1397,20 @@ bool VCPatcher::Init()
 {
 	// #########################################################     Game patches     ########################################################
 
+#ifdef DIAG_CRASHLOG
+	// CRASH DIAGNOSTIC BUILD: install the VEH + logger, and convert the two crash blockers to
+	// LOG-caller-chain-then-call-ORIGINAL (we WANT the crash — logged first). MinHook gives a trampoline so we
+	// can call the original (hook::jump can't). The non-crash hooks (WaitForWorldReady, etc.) stay active below
+	// so zone-in reaches the crash point normally.
+	CrashLog_Install();
+	MH_CreateHook((char*)0x14032DC60, ExecUnrecoverableError_diag, (void**)&g_execUnrecoverableError_orig); // 0xBADBEEF site
+	MH_CreateHook((char*)0x140C06FD0, Crash140C06FD0_diag,         (void**)&g_crash140C06FD0_orig);         // exception-inside site
+#else
 	// blocks 0xBADBEEF
 	hook::jump(0x14032DC60, OnIntentionalCrash); //Should have crashed, but continue executing... (sendself, lightweightToFullPc triggers this)
 
 	hook::jump(0x140C06FD0, OnIntentionalCrash1);// exception inside 140C06FD0 somewhere
+#endif
 
 	// WaitForWorldReady patches
 	MH_CreateHook((char*)0x140478080, WaitForWorldReady, (void**)&g_origWaitForWorldReady); //Needs the confirm packet (2016)

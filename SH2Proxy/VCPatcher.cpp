@@ -253,35 +253,6 @@ void VCPatcher::PreHooks() {
 
 ofstream logFile;
 
-static intptr_t(*g_origWaitForWorldReady)(char* a1);
-intptr_t WaitForWorldReady(char* a1) {
-	*(char*)(a1 + 0x31500 + 0x1F) = true; //BaseClient->gap31500[0x1F]
-	intptr_t returnVal = 0;
-	__try
-	{
-		returnVal = g_origWaitForWorldReady(a1);
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		printf_s("WaitForWorldReady excepted, caught and returned.\n");
-	}
-	return returnVal;
-}
-
-static intptr_t(*g_origWaitForWorldReadyProcess)(char* a1);
-intptr_t WaitForWorldReadyProcess(char* a1) {
-	intptr_t returnVal = 0;
-	__try
-	{
-		returnVal = g_origWaitForWorldReadyProcess(a1);
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		printf_s("WaitForWorldReadyProcess excepted, caught and returned.\n");
-	}
-	return 1;
-}
-
 static bool(*File__Open_orig)(void* a1, char* filename, int a3, int a4);
 bool File__Open(void* a1, char* filename, int a3, int a4) {
 	bool open = File__Open_orig(a1, filename, a3, a4);
@@ -907,13 +878,6 @@ static void loadoutSelectSlotRead(void* a1, void* a2, void* a3) {
 
 // end of loadout
 
-static char(*networkProximityUpdatesComplete_orig)(void* a1, void* a2, void* a3, void* a4);
-static char networkProximityUpdatesComplete(void* a1, void* a2, void* a3, void* a4) {
-	char ret = networkProximityUpdatesComplete_orig(a1, a2, a3, a4);
-	printf("********networkProximityUpdatesComplete\n\n");
-	printf("ret: %d\n", ret);
-	return 1;
-}
 
 static void (*ItemAddBytesWithLengthRead_orig)(void* a1, void* a2);
 static void ItemAddBytesWithLengthRead(void* a1, void* a2) {
@@ -1400,8 +1364,8 @@ bool VCPatcher::Init()
 #ifdef DIAG_CRASHLOG
 	// CRASH DIAGNOSTIC BUILD: install the VEH + logger, and convert the two crash blockers to
 	// LOG-caller-chain-then-call-ORIGINAL (we WANT the crash — logged first). MinHook gives a trampoline so we
-	// can call the original (hook::jump can't). The non-crash hooks (WaitForWorldReady, etc.) stay active below
-	// so zone-in reaches the crash point normally.
+	// can call the original (hook::jump can't). The non-crash feature hooks stay active below so zone-in
+	// reaches the crash point normally.
 	CrashLog_Install();
 	MH_CreateHook((char*)0x14032DC60, ExecUnrecoverableError_diag, (void**)&g_execUnrecoverableError_orig); // 0xBADBEEF site
 	MH_CreateHook((char*)0x140C06FD0, Crash140C06FD0_diag,         (void**)&g_crash140C06FD0_orig);         // exception-inside site
@@ -1412,10 +1376,9 @@ bool VCPatcher::Init()
 	hook::jump(0x140C06FD0, OnIntentionalCrash1);// exception inside 140C06FD0 somewhere
 #endif
 
-	// WaitForWorldReady patches
-	MH_CreateHook((char*)0x140478080, WaitForWorldReady, (void**)&g_origWaitForWorldReady); //Needs the confirm packet (2016)
-	//MH_CreateHook((char*)0x140478560, WaitForWorldReadyProcess, (void**)&g_origWaitForWorldReadyProcess); //Needs the confirm packet (2016)
-	MH_CreateHook((char*)0x140389E10, networkProximityUpdatesComplete, (void**)&networkProximityUpdatesComplete_orig);
+	// (Removed: WaitForWorldReady @0x140478080 + networkProximityUpdatesComplete @0x140389E10 — the server now
+	//  sends the world-ready packets (ZoneDoneSendingInitialData, DoneSendingPreloadCharacters,
+	//  NetworkProximityUpdatesComplete) on ClientIsReady, so WaitForWorldReady completes natively.)
 
 	// ###################################################     End of game patches     ############################################################
 

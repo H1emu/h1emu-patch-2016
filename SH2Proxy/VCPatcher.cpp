@@ -1026,31 +1026,6 @@ static void onPrintConsole(void* a1, void* a2, char a3, void* a4) {
 	onPrintConsole_orig(a1, a2, a3, a4);
 }
 
-static void(*ItemDefinitionReadFromBuffer_orig)(ClientItemDefinition* a1, DataLoadByPacket* buffer);
-static void ItemDefinitionReadFromBuffer(ClientItemDefinition* a1, DataLoadByPacket* buffer) {
-	if (buffer->pBuffer + 4 <= buffer->pBufferEnd)
-	{
-		buffer->pBuffer = buffer->pBuffer + 4;                   // ID
-	}
-	else
-	{
-		buffer->failureFlag = 1;
-		buffer->pBuffer = buffer->pBufferEnd;
-	}
-	ItemDefinitionReadFromBuffer_orig(a1, buffer);
-}
-
-static void(*sendGroupJoinPacket_orig)(void* a1, char joinState);
-static void sendGroupJoinPacket(void* a1, char joinState) {
-	const std::uintptr_t base = 0x1405F9190;
-
-	hook::nopVP(base + 0xAB, 2);
-	hook::nopVP(base + 0xC5, 2);
-	hook::nopVP(base + 0xDB, 2);
-
-	sendGroupJoinPacket_orig(a1, joinState);
-}
-
 void CreateAssetValidatorPipe() {
 	// Parent process code to set up a named pipe for communication
 	HANDLE hPipe;
@@ -1385,14 +1360,18 @@ bool VCPatcher::Init()
 	// ###################################################     Game hooks     ############################################################
 
 	// ####################     Release hooks     ####################
-	// ITEMDEFINITION HOOKS:
-	MH_CreateHook((char*)0x1406F3DA0, ItemDefinitionReadFromBuffer, (void**)&ItemDefinitionReadFromBuffer_orig);
+	// ITEMDEFINITION: static 1-instruction cursor fix in ClientItemDefinitionManager::HandlePacket (replaces the
+	// old wrapper hook). At 0x140903CA6 `mov [rbx+10h], rax` (48 89 43 10) rewinds the read cursor to BEFORE the
+	// u32 ID; NOP it (90 90 90 90) so the cursor stays at pBuffer+4 (after the ID, set at 0x140903C8B) and the
+	// native reader parses the u16 compression header + LZ4-decompresses correctly. The ID is still captured
+	// (edi @0x140903C88, before the NOP). RE-confirmed (h1emu-re 9aa6ee1).
+	hook::nopVP(0x140903CA6, 4);
 
 	// LUA:
 	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
 
-	// GROUP:
-	MH_CreateHook((char*)0x1405F9190, sendGroupJoinPacket, (void**)&sendGroupJoinPacket_orig);
+	// GROUP: hook removed — the server Group.Invite fix (inviteData source/target unknownByte1=1 + inviteType=1)
+	// makes the client's native Group.Join guards pass. COUPLED: only works with that server fix deployed.
 
 	// EMOTE + NIGHT-VISION HOTKEY REPAIR (Dec-2016 broken-trigger fix; see block above for full rationale):
 	// resolve the ASLR delta once, then install the single combined trampoline on Ability_ActivateByNameHash.

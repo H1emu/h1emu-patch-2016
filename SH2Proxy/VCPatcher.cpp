@@ -19,6 +19,14 @@
 #define CONSOLE_ENABLED
 #endif
 
+// DIAGNOSTIC in-process crash-trace logger. UNDEFINED by default (normal build unaffected); build the crash
+// diagnostic with /DDIAG_CRASHLOG. When defined: installs a first-chance VECTORED exception handler that logs
+// every fault (code, faulting instruction, AV read/write + data addr, module-relative backtrace) to
+// h1-crash-trace.log and lets it crash naturally (EXCEPTION_CONTINUE_SEARCH); AND converts the two crash-site
+// blockers (0x14032DC60 / 0x140C06FD0) from block-the-crash to LOG-caller-chain-then-call-original so we
+// capture which packet handler tripped the assert even when the terminate is an uncatchable fastfail.
+// #define DIAG_CRASHLOG
+
 using namespace std;
 
 static bool consoleShowing = false;
@@ -244,35 +252,6 @@ void VCPatcher::PreHooks() {
 }
 
 ofstream logFile;
-
-static intptr_t(*g_origWaitForWorldReady)(char* a1);
-intptr_t WaitForWorldReady(char* a1) {
-	*(char*)(a1 + 0x31500 + 0x1F) = true; //BaseClient->gap31500[0x1F]
-	intptr_t returnVal = 0;
-	__try
-	{
-		returnVal = g_origWaitForWorldReady(a1);
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		printf_s("WaitForWorldReady excepted, caught and returned.\n");
-	}
-	return returnVal;
-}
-
-static intptr_t(*g_origWaitForWorldReadyProcess)(char* a1);
-intptr_t WaitForWorldReadyProcess(char* a1) {
-	intptr_t returnVal = 0;
-	__try
-	{
-		returnVal = g_origWaitForWorldReadyProcess(a1);
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		printf_s("WaitForWorldReadyProcess excepted, caught and returned.\n");
-	}
-	return 1;
-}
 
 static bool(*File__Open_orig)(void* a1, char* filename, int a3, int a4);
 bool File__Open(void* a1, char* filename, int a3, int a4) {
@@ -665,223 +644,167 @@ void OnIntentionalCrash1() {
 	printf("Should have crashed, but will continue executing, return address is: %p\n", _ReturnAddress());
 }
 
-static void(*SpawnLightweightPc_orig)(BaseClient* a1, LightweightPc* a2);
-static void SpawnLightweightPc(BaseClient* a1, LightweightPc* a2) {
-	printf("********SpawnLightweightPcReadFromPacket\n\n");
-	SpawnLightweightPc_orig(a1, a2);
+// ============================================================================================================
+// ===============   DIAG_CRASHLOG — in-process crash-trace logger (VEH + log-then-original hooks)   ===========
+// ============================================================================================================
+// Frida can't capture the zone-in crash (attach -> "Process Terminated", no exception, no hook fires:
+// BattlEye/anti-tamper kills the injected process, or the fatal path is an uncatchable fastfail-style
+// terminate). The dinput8 patch is already loaded and tolerated, so we capture the crash from IN-PROCESS:
+// a first-chance VECTORED handler logs any AV (incl. the 0xBADBEEF null-write) and lets it crash; the two
+// crash-site hooks log the CALLER chain + args BEFORE calling the original (which then terminates), so we
+// still learn which handler tripped it even for a fastfail the VEH can't see. All addresses are logged
+// module-relative (H1Z1.exe+0xOFF; IDA VA = 0x140000000 + OFF). Everything here is gated by DIAG_CRASHLOG.
+#ifdef DIAG_CRASHLOG
+static const wchar_t* kCrashLogPath = L"h1-crash-trace.log";   // relative -> client working dir (H1Z1.exe dir)
+static uintptr_t g_mainBase = 0;                 // GetModuleHandleW(NULL) = H1Z1.exe base
+static CRITICAL_SECTION g_crashCs;
+static bool g_crashCsReady = false;
+static __declspec(thread) int g_inCrashLog = 0;  // per-thread reentrancy guard (logging must not recurse in VEH)
+
+// Append-open + WRITE + FlushFileBuffers + close PER call so the trace survives a hard terminate. Also mirror
+// to the debugger via OutputDebugStringA.
+static void CrashWriteRaw(const char* text)
+{
+	HANDLE h = CreateFileW(kCrashLogPath, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+		OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h != INVALID_HANDLE_VALUE)
+	{
+		DWORD wrote = 0;
+		WriteFile(h, text, (DWORD)strlen(text), &wrote, NULL);
+		FlushFileBuffers(h);   // force to disk before we return (survive the terminate)
+		CloseHandle(h);
+	}
+	OutputDebugStringA(text);
 }
 
-static void(*sub_14039E0A0_orig)(void* a1);
-static void sub_14039E0A0(void* a1) {
-	printf("********sub_14039E0A0\n\n"); // called within spawnlightweightpc and spawnlightweightnpc, makes sure correct checks are passed
-	sub_14039E0A0_orig(a1);
+// Format an address module-relative: "<module-basename>+0xOFF" (H1Z1.exe+0xOFF for main-module frames).
+static void CrashFmtAddr(char* out, size_t outsz, void* addr)
+{
+	HMODULE m = NULL;
+	if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		(LPCWSTR)addr, &m) && m)
+	{
+		char path[MAX_PATH] = { 0 };
+		GetModuleFileNameA(m, path, MAX_PATH);
+		const char* bn = path;
+		for (const char* p = path; *p; ++p) if (*p == '\\' || *p == '/') bn = p + 1;
+		_snprintf_s(out, outsz, _TRUNCATE, "%s+0x%llX", bn, (unsigned long long)((uintptr_t)addr - (uintptr_t)m));
+	}
+	else
+	{
+		_snprintf_s(out, outsz, _TRUNCATE, "0x%llX", (unsigned long long)(uintptr_t)addr);
+	}
 }
 
-static void(*containerEventBaseRead_orig)(void* a1, void* a2, void* a3);
-static void containerEventBaseRead(void* a1, void* a2, void* a3) {
-	printf("********containerEventBaseRead\n\n");
-	containerEventBaseRead_orig(a1, a2, a3);
-}
-static void(*containerErrorRead_orig)(void* a1, void* a2, void* a3);
-static void containerErrorRead(void* a1, void* a2, void* a3) {
-	printf("********containerErrorRead\n\n");
-	containerErrorRead_orig(a1, a2, a3);
-}
-static void(*containerAddContainerRead_orig)(void* a1, void* a2, void* a3);
-static void containerAddContainerRead(void* a1, void* a2, void* a3) {
-	printf("********containerAddContainerRead\n\n");
-	containerAddContainerRead_orig(a1, a2, a3);
-}
-
-// equipment
-
-static void(*setCharacterEquipmentSlot_orig)(void* a1, void* a2, void* a3);
-static void setCharacterEquipmentSlot(void* a1, void* a2, void* a3) {
-	printf("********setCharacterEquipmentSlot\n\n");
-	setCharacterEquipmentSlot_orig(a1, a2, a3);
+// Timestamped single line.
+static void CrashLogf(const char* fmt, ...)
+{
+	char body[3072];
+	va_list ap; va_start(ap, fmt);
+	_vsnprintf_s(body, sizeof(body), _TRUNCATE, fmt, ap);
+	va_end(ap);
+	SYSTEMTIME st; GetLocalTime(&st);
+	char line[3200];
+	_snprintf_s(line, sizeof(line), _TRUNCATE, "[%02d:%02d:%02d.%03d] %s\n",
+		st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, body);
+	bool locked = g_crashCsReady;
+	if (locked) EnterCriticalSection(&g_crashCs);
+	CrashWriteRaw(line);
+	if (locked) LeaveCriticalSection(&g_crashCs);
 }
 
-static void(*equipmentEventBase_orig)(void* a1, void* a2, void* a3);
-static void equipmentEventBase(void* a1, void* a2, void* a3) {
-	printf("********equipmentEventBase\n\n");
-	equipmentEventBase_orig(a1, a2, a3);
+// Capture + log a module-relative backtrace as ONE flushed block. framesToSkip drops the logger/dispatch frames.
+static void CrashLogBacktrace(ULONG framesToSkip)
+{
+	void* frames[62];
+	USHORT n = RtlCaptureStackBackTrace(framesToSkip, 62, frames, NULL);
+	char buf[62 * 96 + 64];
+	int off = _snprintf_s(buf, sizeof(buf), _TRUNCATE, "    backtrace (%u frames):\n", n);
+	for (USHORT i = 0; i < n && off > 0 && off < (int)sizeof(buf) - 128; ++i)
+	{
+		char a[160]; CrashFmtAddr(a, sizeof(a), frames[i]);
+		int w = _snprintf_s(buf + off, sizeof(buf) - off, _TRUNCATE, "      [%02u] %s\n", i, a);
+		if (w <= 0) break;
+		off += w;
+	}
+	bool locked = g_crashCsReady;
+	if (locked) EnterCriticalSection(&g_crashCs);
+	CrashWriteRaw(buf);
+	if (locked) LeaveCriticalSection(&g_crashCs);
 }
 
-// end of equipment
+// First-chance VECTORED exception handler: log-only, then EXCEPTION_CONTINUE_SEARCH (let it crash naturally).
+static LONG CALLBACK CrashVeh(EXCEPTION_POINTERS* ep)
+{
+	if (g_inCrashLog) return EXCEPTION_CONTINUE_SEARCH;   // don't recurse if logging itself faults
+	EXCEPTION_RECORD* er = ep ? ep->ExceptionRecord : NULL;
+	if (!er) return EXCEPTION_CONTINUE_SEARCH;
+	DWORD code = er->ExceptionCode;
+	// Skip pure-noise debug codes (thread-name / OutputDebugString) so the real fault isn't buried.
+	if (code == 0x40010006 /*DBG_PRINTEXCEPTION_C*/ || code == 0x4001000A /*DBG_PRINTEXCEPTION_WIDE_C*/ ||
+		code == 0x406D1388 /*MS_VC thread name*/)
+		return EXCEPTION_CONTINUE_SEARCH;
 
-// loadout
-
-static void(*loadoutBaseRead_orig)(void* a1, void* a2, void* a3);
-static void loadoutBaseRead(void* a1, void* a2, void* a3) {
-	printf("********loadoutBaseRead\n\n");
-	loadoutBaseRead_orig(a1, a2, a3);
+	g_inCrashLog = 1;
+	__try
+	{
+		char faultAddr[160]; CrashFmtAddr(faultAddr, sizeof(faultAddr), er->ExceptionAddress);
+		char detail[192]; detail[0] = 0;
+		if (code == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2)
+		{
+			ULONG_PTR op = er->ExceptionInformation[0];
+			const char* what = op == 0 ? "READ" : op == 1 ? "WRITE" : op == 8 ? "EXEC" : "?";
+			_snprintf_s(detail, sizeof(detail), _TRUNCATE, " | AV %s data=0x%llX",
+				what, (unsigned long long)er->ExceptionInformation[1]);
+		}
+		// Note C++ EH (0xE06D7363) is frequent+benign; still logged (compact) so the sequence is visible.
+		bool benignCpp = (code == 0xE06D7363);
+		CrashLogf("*** EXCEPTION code=0x%08X flags=0x%X at %s%s%s",
+			code, er->ExceptionFlags, faultAddr, detail, benignCpp ? " (C++ EH)" : "");
+		if (!benignCpp)
+			CrashLogBacktrace(2);   // skip CrashVeh + ntdll dispatch frames
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) { /* logging faulted; swallow */ }
+	g_inCrashLog = 0;
+	return EXCEPTION_CONTINUE_SEARCH;   // log-only — never handle; let the process crash as it would.
 }
 
-static void(*loadoutSelectLoadoutRead_orig)(void* a1, void* a2, void* a3);
-static void loadoutSelectLoadoutRead(void* a1, void* a2, void* a3) {
-	printf("********loadoutSelectLoadoutRead\n\n");
-	loadoutSelectLoadoutRead_orig(a1, a2, a3);
+// Crash-site hook @0x14032DC60 (execUnrecoverableError; the 0xBADBEEF path). DIAG = log caller+args THEN
+// call the original (let it proceed to terminate). x64 __fastcall; forward rcx/rdx/r8/r9.
+static void(__fastcall* g_execUnrecoverableError_orig)(void*, void*, void*, void*) = nullptr;
+static void __fastcall ExecUnrecoverableError_diag(void* a1, void* a2, void* a3, void* a4)
+{
+	char ret[160]; CrashFmtAddr(ret, sizeof(ret), _ReturnAddress());
+	CrashLogf("### CRASH-SITE execUnrecoverableError (H1Z1.exe+0x32DC60) caller=%s args=(%p,%p,%p,%p)",
+		ret, a1, a2, a3, a4);
+	CrashLogBacktrace(1);
+	g_execUnrecoverableError_orig(a1, a2, a3, a4);   // let it crash (do NOT block in the diag build)
 }
 
-static void(*loadoutSetCurrentLoadoutRead_orig)(void* a1, void* a2, void* a3);
-static void loadoutSetCurrentLoadoutRead(void* a1, void* a2, void* a3) {
-	printf("********loadoutSetCurrentLoadoutRead\n\n");
-	loadoutSetCurrentLoadoutRead_orig(a1, a2, a3);
+// Crash-site hook @0x140C06FD0 (exception inside this fn). DIAG = log caller+args THEN call original.
+static void(__fastcall* g_crash140C06FD0_orig)(void*, void*, void*, void*) = nullptr;
+static void __fastcall Crash140C06FD0_diag(void* a1, void* a2, void* a3, void* a4)
+{
+	char ret[160]; CrashFmtAddr(ret, sizeof(ret), _ReturnAddress());
+	CrashLogf("### CRASH-SITE sub_140C06FD0 (H1Z1.exe+0xC06FD0) caller=%s args=(%p,%p,%p,%p)",
+		ret, a1, a2, a3, a4);
+	CrashLogBacktrace(1);
+	g_crash140C06FD0_orig(a1, a2, a3, a4);           // let it crash
 }
 
-static void(*loadoutSelectSlotRead_orig)(void* a1, void* a2, void* a3);
-static void loadoutSelectSlotRead(void* a1, void* a2, void* a3) {
-	printf("********loadoutSelectSlotRead\n\n");
-	loadoutSelectSlotRead_orig(a1, a2, a3);
+// Install the VEH + logger. Called once from VCPatcher::Init() under DIAG_CRASHLOG.
+static void CrashLog_Install()
+{
+	InitializeCriticalSection(&g_crashCs);
+	g_crashCsReady = true;
+	g_mainBase = (uintptr_t)GetModuleHandleW(NULL);
+	AddVectoredExceptionHandler(1 /*first, first-chance*/, CrashVeh);
+	CrashLogf("==================== DIAG_CRASHLOG session start ====================");
+	CrashLogf("H1Z1.exe base=0x%llX  (module-relative frames: H1Z1.exe+0xOFF ; IDA VA = 0x140000000 + OFF)",
+		(unsigned long long)g_mainBase);
+	CrashLogf("VEH installed (first-chance, log-only); crash-site hooks 0x32DC60 / 0xC06FD0 = log-then-original.");
 }
-
-// end of loadout
-
-static char(*networkProximityUpdatesComplete_orig)(void* a1, void* a2, void* a3, void* a4);
-static char networkProximityUpdatesComplete(void* a1, void* a2, void* a3, void* a4) {
-	char ret = networkProximityUpdatesComplete_orig(a1, a2, a3, a4);
-	printf("********networkProximityUpdatesComplete\n\n");
-	printf("ret: %d\n", ret);
-	return 1;
-}
-
-static void (*ItemAddBytesWithLengthRead_orig)(void* a1, void* a2);
-static void ItemAddBytesWithLengthRead(void* a1, void* a2) {
-	printf("********ItemAddBytesWithLengthRead\n\n");
-	ItemAddBytesWithLengthRead_orig(a1, a2);
-}
-
-static void (*HandleItemAddData_orig)(void* a1, void* a2, void* a3);
-static void HandleItemAddData(void* a1, void* a2, void* a3) {
-	printf("********HandleItemAddData\n\n");
-	HandleItemAddData_orig(a1, a2, a3);
-}
-
-static void*(*ClientPlayerItemManager__CreateItem_orig)(void* a1, void* a2);
-static void* ClientPlayerItemManager__CreateItem(void* a1, void* a2) {
-	void* ret = ClientPlayerItemManager__CreateItem_orig(a1, a2);
-	printf("********ClientPlayerItemManager__CreateItem\n\n");
-	return ret;
-}
-
-static void (*ReadItemDataFromBuffer_orig)(void* a1, void* a2);
-static void ReadItemDataFromBuffer(void* a1, void* a2) {
-	printf("********ReadItemDataFromBuffer\n\n");
-	ReadItemDataFromBuffer_orig(a1, a2);
-}
-
-static void (*ConstructionPlacementFinalizePacket_orig)(constructionRelated__* a1);
-static void ConstructionPlacementFinalizePacket(constructionRelated__ *a1) {
-	printf("********ConstructionPlacementFinalizePacket\n\n");
-
-	*(bool*)(a1 + 0xCC) = 1;
-	*(bool*)(a1 + 0x169) = 0;
-	ConstructionPlacementFinalizePacket_orig(a1);
-}
-
-static void (*BeginCharacterAccessRead_orig)(void* a1, void* a2);
-static void BeginCharacterAccessRead(void* a1, void* a2) {
-	printf("********BeginCharacterAccessRead\n\n");
-	BeginCharacterAccessRead_orig(a1, a2);
-}
-
-static void (*ItemsReadFunc_orig)(void* a1, void* a2);
-static void ItemsReadFunc(void* a1, void* a2) {
-	printf("********ItemsReadFunc\n\n");
-	ItemsReadFunc_orig(a1, a2);
-}
-
-static void (*sub_140BAA8C0_orig)(void* a1, void* a2);
-static void sub_140BAA8C0(void* a1, void* a2) {
-	printf("********sub_140BAA8C0\n\n");
-	sub_140BAA8C0_orig(a1, a2);
-}
-
-static void (*sub_140447B70_orig)(void* a1, void* a2);
-static void sub_140447B70(void* a1, void* a2) {
-	printf("********sub_140447B70\n\n");
-	sub_140447B70_orig(a1, a2);
-}
-
-static void (*sub_1405FC580_orig)(void* a1, void* a2, void* a3);
-static void sub_1405FC580(void* a1, void* a2, void* a3) {
-	printf("********sub_1405FC580\n\n");
-	sub_1405FC580_orig(a1, a2, a3);
-}
-
-static ContainerDefinition *(*GetContainerDefinition_orig)(void* a1, unsigned int a2);
-static ContainerDefinition *GetContainerDefinition(void* a1, unsigned int a2) {
-	printf("\n\n\n\n\n\n\n\n\n\n\n\n\n********ContainerDefinitionManager::GetContainerDefinition return address: %p\n\n", _ReturnAddress());
-	printf("containerDefinitionId: %i\n", a2);
-	/*
-	char buffer[512];
-	MessageBox(
-		NULL,
-		buffer,
-		"ContainerDefinitionManager::GetContainerDefinition",
-		MB_ICONWARNING | MB_DEFBUTTON2
-	);
-	*/
-	ContainerDefinition* ret = GetContainerDefinition_orig(a1, a2);
-	printf("MAXIMUM_SLOTS %i\n", ret->MAXIMUM_SLOTS);
-	printf("MAX_BULK %i\n", ret->MAX_BULK);
-	return ret;
-}
-
-static void* (*GetItemErrorMessage_orig)(unsigned int a1);
-static void* GetItemErrorMessage(unsigned int a1) {
-	void* ret = GetItemErrorMessage_orig(a1);
-	printf("********GetItemErrorMessage return address: %p\n\n", _ReturnAddress());
-	return ret;
-}
-
-
-static __int64 (*sub_1405FE160_orig)(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, int a7, unsigned int a8);
-static __int64 sub_1405FE160(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, int a7, unsigned int a8) {
-	__int64 ret = sub_1405FE160_orig(a1, a2, a3, a4, a5, a6, a7, a8);
-	printf("********sub_1405FE160 return address: %p ret: %d\n\n", _ReturnAddress(), ret);
-	return ret;
-}
-
-
-
-static void (*GetItemErrorMessageReturn_orig)(double a1, unsigned int a2);
-static void GetItemErrorMessageReturn(double a1, unsigned int a2) {
-	printf("********GetItemErrorMessageReturn return address: %p\n\n", _ReturnAddress());
-	GetItemErrorMessageReturn_orig(a1, a2);
-}
-
-static void (*GetItemErrorMessageReturnReturn_orig)(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, void* a7);
-static void GetItemErrorMessageReturnReturn(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, void* a7) {
-	printf("********GetItemErrorMessageReturnReturn return address: %p\n\n", _ReturnAddress());
-	GetItemErrorMessageReturnReturn_orig(a1, a2, a3, a4, a5, a6, a7);
-}
-
-static void (*sub_140B27400_orig)(void* a1, void* a2);
-static void sub_140B27400(void* a1, void* a2) {
-	printf("********sub_140B27400 return address: %p\n\n", _ReturnAddress());
-	sub_140B27400_orig(a1, a2);
-}
-
-static bool (*LoadoutIdValidate_orig)(ClientLoadoutManager* a1);
-static bool LoadoutIdValidate(ClientLoadoutManager* a1) {
-	bool ret = LoadoutIdValidate_orig(a1);
-	printf("********LoadoutIdValidate return address: %p, ret: %d\n\n", _ReturnAddress(), ret);
-	printf("activeLoadoutSlots %d\n", a1->activeLoadoutSlots);
-	printf("field_18 %d\n", a1->field_18);
-	printf("loadoutId %d\n", a1->loadoutId);
-	return true; // force loadoutId validation
-}
-
-
-static bool (*GetIsContainer_orig)(ClientItemDefinition* a1);
-static bool GetIsContainer(ClientItemDefinition* a1) {
-	bool ret = GetIsContainer_orig(a1);
-	printf("********GetIsContainer return address: %p, ret: %d\n\n", _ReturnAddress(), ret);
-	printf("ITEM_TYPE %d\n", a1->baseitemdefinition0.ITEM_TYPE);
-	printf("ID %d\n", a1->baseitemdefinition0.dword8);
-	return ret; 
-}
+#endif // DIAG_CRASHLOG
 
 //static void (*onPrintConsole_orig)(void* a1, void* a2, char a3, void* a4);
 static void onPrintConsole(void* a1, void* a2, char a3, void* a4) {
@@ -890,31 +813,6 @@ static void onPrintConsole(void* a1, void* a2, char a3, void* a4) {
 		ConsoleRelated = a1;
 	}
 	onPrintConsole_orig(a1, a2, a3, a4);
-}
-
-static void(*ItemDefinitionReadFromBuffer_orig)(ClientItemDefinition* a1, DataLoadByPacket* buffer);
-static void ItemDefinitionReadFromBuffer(ClientItemDefinition* a1, DataLoadByPacket* buffer) {
-	if (buffer->pBuffer + 4 <= buffer->pBufferEnd)
-	{
-		buffer->pBuffer = buffer->pBuffer + 4;                   // ID
-	}
-	else
-	{
-		buffer->failureFlag = 1;
-		buffer->pBuffer = buffer->pBufferEnd;
-	}
-	ItemDefinitionReadFromBuffer_orig(a1, buffer);
-}
-
-static void(*sendGroupJoinPacket_orig)(void* a1, char joinState);
-static void sendGroupJoinPacket(void* a1, char joinState) {
-	const std::uintptr_t base = 0x1405F9190;
-
-	hook::nopVP(base + 0xAB, 2);
-	hook::nopVP(base + 0xC5, 2);
-	hook::nopVP(base + 0xDB, 2);
-
-	sendGroupJoinPacket_orig(a1, joinState);
 }
 
 void CreateAssetValidatorPipe() {
@@ -1227,35 +1125,41 @@ bool VCPatcher::Init()
 {
 	// #########################################################     Game patches     ########################################################
 
+#ifdef DIAG_CRASHLOG
+	// CRASH DIAGNOSTIC BUILD: install the VEH + logger, and convert the two crash blockers to
+	// LOG-caller-chain-then-call-ORIGINAL (we WANT the crash — logged first). MinHook gives a trampoline so we
+	// can call the original (hook::jump can't). The non-crash feature hooks stay active below so zone-in
+	// reaches the crash point normally.
+	CrashLog_Install();
+	MH_CreateHook((char*)0x14032DC60, ExecUnrecoverableError_diag, (void**)&g_execUnrecoverableError_orig); // 0xBADBEEF site
+	MH_CreateHook((char*)0x140C06FD0, Crash140C06FD0_diag,         (void**)&g_crash140C06FD0_orig);         // exception-inside site
+#else
 	// blocks 0xBADBEEF
 	hook::jump(0x14032DC60, OnIntentionalCrash); //Should have crashed, but continue executing... (sendself, lightweightToFullPc triggers this)
 
 	hook::jump(0x140C06FD0, OnIntentionalCrash1);// exception inside 140C06FD0 somewhere
-
-	// WaitForWorldReady patches
-	MH_CreateHook((char*)0x140478080, WaitForWorldReady, (void**)&g_origWaitForWorldReady); //Needs the confirm packet (2016)
-	//MH_CreateHook((char*)0x140478560, WaitForWorldReadyProcess, (void**)&g_origWaitForWorldReadyProcess); //Needs the confirm packet (2016)
-	MH_CreateHook((char*)0x140389E10, networkProximityUpdatesComplete, (void**)&networkProximityUpdatesComplete_orig);
+#endif
 
 	// ###################################################     End of game patches     ############################################################
 
 	// ###################################################     Game hooks     ############################################################
 
 	// ####################     Release hooks     ####################
-	// ITEMDEFINITION HOOKS:
-	MH_CreateHook((char*)0x1406F3DA0, ItemDefinitionReadFromBuffer, (void**)&ItemDefinitionReadFromBuffer_orig);
+	// ITEMDEFINITION: static 1-instruction cursor fix in ClientItemDefinitionManager::HandlePacket.
+	// At 0x140903CA6 `mov [rbx+10h], rax` (48 89 43 10) rewinds the read cursor to BEFORE the u32 ID; NOP it
+	// (90 90 90 90) so the cursor stays at pBuffer+4 (after the ID, set at 0x140903C8B) and the native reader
+	// parses the u16 compression header + LZ4-decompresses correctly. The ID is still captured (edi
+	// @0x140903C88, before the NOP). RE-confirmed (h1emu-re 9aa6ee1).
+	hook::nopVP(0x140903CA6, 4);
 
 	// LUA:
 	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
-
-	// GROUP:
-	MH_CreateHook((char*)0x1405F9190, sendGroupJoinPacket, (void**)&sendGroupJoinPacket_orig);
 
 	// EMOTE + NIGHT-VISION HOTKEY REPAIR (Dec-2016 broken-trigger fix; see block above for full rationale):
 	// resolve the ASLR delta once, then install the single combined trampoline on Ability_ActivateByNameHash.
 	// The game resolves key -> bound InputProfile action -> nameHash before this call, so intercepting here is
 	// keybind-aware: emote nameHashes -> direct 0xf801 play+send; NV nameHash -> force-member+original; all
-	// other abilities -> original. (The old raw-F-key->slot ProcessInput hook is removed; it mis-mapped keys.)
+	// other abilities -> original.
 	g_emoteNvDelta = (uintptr_t)GetModuleHandleW(L"H1Z1.exe") - 0x140000000;
 	MH_CreateHook((char*)REBASE(0x140931E10), Ability_ActivateByNameHash_hook, (void**)&Ability_ActivateByNameHash_orig); // emote 0xf801 + NV 0xa101{1111272}
 
@@ -1271,84 +1175,11 @@ bool VCPatcher::Init()
 	
 	MH_CreateHook((char*)0x14133F230, handleCommand, (void**)&handleCommand_orig);
 
-	// ####################     Debug hooks     ####################
+	// ####################     Debug hooks (CONSOLE_ENABLED only)     ####################
 	#ifdef CONSOLE_ENABLED
-
-	// testing
-
-
-
-	//MH_CreateHook((char*)0x140B339D0, GetIsContainer, (void**)&GetIsContainer_orig);
-
-	//MH_CreateHook((char*)0x14178F530, LoadoutIdValidate, (void**)&LoadoutIdValidate_orig);
-
-	
-	//MH_CreateHook((char*)0x141787620, GetItemErrorMessage, (void**)&GetItemErrorMessage_orig);
-
-	//MH_CreateHook((char*)0x1405B9680, GetItemErrorMessageReturn, (void**)&GetItemErrorMessageReturn_orig);
-
-	//MH_CreateHook((char*)0x1405BC490, GetItemErrorMessageReturnReturn, (void**)&GetItemErrorMessageReturnReturn_orig);
-
-	//MH_CreateHook((char*)0x140B27400, sub_140B27400, (void**)&sub_140B27400_orig);
-
-	//MH_CreateHook((char*)0x1405FE160, sub_1405FE160, (void**)&sub_1405FE160_orig);
-
-	// ACCESSEDCHARACTERBASE HOOKS
-
-	//MH_CreateHook((char*)0x140602BE0, BeginCharacterAccessRead, (void**)&BeginCharacterAccessRead_orig);
-	//MH_CreateHook((char*)0x140374DF0, ItemsReadFunc, (void**)&ItemsReadFunc_orig);
-	//MH_CreateHook((char*)0x140BAA8C0, sub_140BAA8C0, (void**)&sub_140BAA8C0_orig);
-
-	// CONSTRUCTION HOOKS:
-
-	//MH_CreateHook((char*)0x140773B60, ConstructionPlacementFinalizePacket, (void**)&ConstructionPlacementFinalizePacket_orig);
-
-	// INVENTORY HOOKS:
-
-	//MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
-	//MH_CreateHook((char*)0x140630DA0, HandleItemAddData, (void**)&HandleItemAddData_orig);
-	//MH_CreateHook((char*)0x14049DBD0, ClientPlayerItemManager__CreateItem, (void**)&ClientPlayerItemManager__CreateItem_orig);
-	//MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
-	
-	// LOADOUT HOOKS:
-
-	//MH_CreateHook((char*)0x1405C9770, loadoutBaseRead, (void**)&loadoutBaseRead_orig);
-	//MH_CreateHook((char*)0x1405C9970, loadoutSelectLoadoutRead, (void**)&loadoutSelectLoadoutRead_orig);
-	//MH_CreateHook((char*)0x1405C9BF0, loadoutSetCurrentLoadoutRead, (void**)&loadoutSetCurrentLoadoutRead_orig);
-	//MH_CreateHook((char*)0x1405C9E80, loadoutSelectSlotRead, (void**)&loadoutSelectSlotRead_orig);
-	
-	// CONTAINER HOOKS:
-
-	//MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
-	//MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
-	//MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
-
-	
-	//MH_CreateHook((char*)0x140447B70, sub_140447B70, (void**)&sub_140447B70_orig);
-	//MH_CreateHook((char*)0x1405FC580, sub_1405FC580, (void**)&sub_1405FC580_orig);
-
-	//MH_CreateHook((char*)0x1417543E0, GetContainerDefinition, (void**)&GetContainerDefinition_orig);
-
-	// EQUIPMENT HOOKS:
-
-	//MH_CreateHook((char*)0x1405819A0, equipmentEventBase, (void**)&equipmentEventBase_orig);
-	//MH_CreateHook((char*)0x140582110, setCharacterEquipmentSlot, (void**)&setCharacterEquipmentSlot_orig);
-	
-	//Other
-
-	// MH_CreateHook((char*)0x1403FD710, SpawnLightweightPc, (void**)&SpawnLightweightPc_orig);
-	
-	//Logging
-
-	//tryAllocConsole();
-
 	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
-
-	MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); //hook absolutely every logging function
-
-	// logs usually written to a file
-	MH_CreateHook((char*)0x14032FA90, writeToLog, (void**)&writeToLog_orig); //hook absolutely every file logging function
-
+	MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); // hook every logging function
+	MH_CreateHook((char*)0x14032FA90, writeToLog, (void**)&writeToLog_orig);                       // hook every file-logging function
 	#endif
 	
 	// ###################################################     End of game hooks     ############################################################

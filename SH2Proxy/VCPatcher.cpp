@@ -655,7 +655,7 @@ void OnIntentionalCrash1() {
 // still learn which handler tripped it even for a fastfail the VEH can't see. All addresses are logged
 // module-relative (H1Z1.exe+0xOFF; IDA VA = 0x140000000 + OFF). Everything here is gated by DIAG_CRASHLOG.
 #ifdef DIAG_CRASHLOG
-static const wchar_t* kCrashLogPath = L"C:\\Users\\h1\\Desktop\\h1-crash-trace.log";
+static const wchar_t* kCrashLogPath = L"h1-crash-trace.log";   // relative -> client working dir (H1Z1.exe dir)
 static uintptr_t g_mainBase = 0;                 // GetModuleHandleW(NULL) = H1Z1.exe base
 static CRITICAL_SECTION g_crashCs;
 static bool g_crashCsReady = false;
@@ -805,217 +805,6 @@ static void CrashLog_Install()
 	CrashLogf("VEH installed (first-chance, log-only); crash-site hooks 0x32DC60 / 0xC06FD0 = log-then-original.");
 }
 #endif // DIAG_CRASHLOG
-
-static void(*SpawnLightweightPc_orig)(BaseClient* a1, LightweightPc* a2);
-static void SpawnLightweightPc(BaseClient* a1, LightweightPc* a2) {
-	printf("********SpawnLightweightPcReadFromPacket\n\n");
-	SpawnLightweightPc_orig(a1, a2);
-}
-
-static void(*sub_14039E0A0_orig)(void* a1);
-static void sub_14039E0A0(void* a1) {
-	printf("********sub_14039E0A0\n\n"); // called within spawnlightweightpc and spawnlightweightnpc, makes sure correct checks are passed
-	sub_14039E0A0_orig(a1);
-}
-
-static void(*containerEventBaseRead_orig)(void* a1, void* a2, void* a3);
-static void containerEventBaseRead(void* a1, void* a2, void* a3) {
-	printf("********containerEventBaseRead\n\n");
-	containerEventBaseRead_orig(a1, a2, a3);
-}
-static void(*containerErrorRead_orig)(void* a1, void* a2, void* a3);
-static void containerErrorRead(void* a1, void* a2, void* a3) {
-	printf("********containerErrorRead\n\n");
-	containerErrorRead_orig(a1, a2, a3);
-}
-static void(*containerAddContainerRead_orig)(void* a1, void* a2, void* a3);
-static void containerAddContainerRead(void* a1, void* a2, void* a3) {
-	printf("********containerAddContainerRead\n\n");
-	containerAddContainerRead_orig(a1, a2, a3);
-}
-
-// equipment
-
-static void(*setCharacterEquipmentSlot_orig)(void* a1, void* a2, void* a3);
-static void setCharacterEquipmentSlot(void* a1, void* a2, void* a3) {
-	printf("********setCharacterEquipmentSlot\n\n");
-	setCharacterEquipmentSlot_orig(a1, a2, a3);
-}
-
-static void(*equipmentEventBase_orig)(void* a1, void* a2, void* a3);
-static void equipmentEventBase(void* a1, void* a2, void* a3) {
-	printf("********equipmentEventBase\n\n");
-	equipmentEventBase_orig(a1, a2, a3);
-}
-
-// end of equipment
-
-// loadout
-
-static void(*loadoutBaseRead_orig)(void* a1, void* a2, void* a3);
-static void loadoutBaseRead(void* a1, void* a2, void* a3) {
-	printf("********loadoutBaseRead\n\n");
-	loadoutBaseRead_orig(a1, a2, a3);
-}
-
-static void(*loadoutSelectLoadoutRead_orig)(void* a1, void* a2, void* a3);
-static void loadoutSelectLoadoutRead(void* a1, void* a2, void* a3) {
-	printf("********loadoutSelectLoadoutRead\n\n");
-	loadoutSelectLoadoutRead_orig(a1, a2, a3);
-}
-
-static void(*loadoutSetCurrentLoadoutRead_orig)(void* a1, void* a2, void* a3);
-static void loadoutSetCurrentLoadoutRead(void* a1, void* a2, void* a3) {
-	printf("********loadoutSetCurrentLoadoutRead\n\n");
-	loadoutSetCurrentLoadoutRead_orig(a1, a2, a3);
-}
-
-static void(*loadoutSelectSlotRead_orig)(void* a1, void* a2, void* a3);
-static void loadoutSelectSlotRead(void* a1, void* a2, void* a3) {
-	printf("********loadoutSelectSlotRead\n\n");
-	loadoutSelectSlotRead_orig(a1, a2, a3);
-}
-
-// end of loadout
-
-
-static void (*ItemAddBytesWithLengthRead_orig)(void* a1, void* a2);
-static void ItemAddBytesWithLengthRead(void* a1, void* a2) {
-	printf("********ItemAddBytesWithLengthRead\n\n");
-	ItemAddBytesWithLengthRead_orig(a1, a2);
-}
-
-static void (*HandleItemAddData_orig)(void* a1, void* a2, void* a3);
-static void HandleItemAddData(void* a1, void* a2, void* a3) {
-	printf("********HandleItemAddData\n\n");
-	HandleItemAddData_orig(a1, a2, a3);
-}
-
-static void*(*ClientPlayerItemManager__CreateItem_orig)(void* a1, void* a2);
-static void* ClientPlayerItemManager__CreateItem(void* a1, void* a2) {
-	void* ret = ClientPlayerItemManager__CreateItem_orig(a1, a2);
-	printf("********ClientPlayerItemManager__CreateItem\n\n");
-	return ret;
-}
-
-static void (*ReadItemDataFromBuffer_orig)(void* a1, void* a2);
-static void ReadItemDataFromBuffer(void* a1, void* a2) {
-	printf("********ReadItemDataFromBuffer\n\n");
-	ReadItemDataFromBuffer_orig(a1, a2);
-}
-
-static void (*ConstructionPlacementFinalizePacket_orig)(constructionRelated__* a1);
-static void ConstructionPlacementFinalizePacket(constructionRelated__ *a1) {
-	printf("********ConstructionPlacementFinalizePacket\n\n");
-
-	*(bool*)(a1 + 0xCC) = 1;
-	*(bool*)(a1 + 0x169) = 0;
-	ConstructionPlacementFinalizePacket_orig(a1);
-}
-
-static void (*BeginCharacterAccessRead_orig)(void* a1, void* a2);
-static void BeginCharacterAccessRead(void* a1, void* a2) {
-	printf("********BeginCharacterAccessRead\n\n");
-	BeginCharacterAccessRead_orig(a1, a2);
-}
-
-static void (*ItemsReadFunc_orig)(void* a1, void* a2);
-static void ItemsReadFunc(void* a1, void* a2) {
-	printf("********ItemsReadFunc\n\n");
-	ItemsReadFunc_orig(a1, a2);
-}
-
-static void (*sub_140BAA8C0_orig)(void* a1, void* a2);
-static void sub_140BAA8C0(void* a1, void* a2) {
-	printf("********sub_140BAA8C0\n\n");
-	sub_140BAA8C0_orig(a1, a2);
-}
-
-static void (*sub_140447B70_orig)(void* a1, void* a2);
-static void sub_140447B70(void* a1, void* a2) {
-	printf("********sub_140447B70\n\n");
-	sub_140447B70_orig(a1, a2);
-}
-
-static void (*sub_1405FC580_orig)(void* a1, void* a2, void* a3);
-static void sub_1405FC580(void* a1, void* a2, void* a3) {
-	printf("********sub_1405FC580\n\n");
-	sub_1405FC580_orig(a1, a2, a3);
-}
-
-static ContainerDefinition *(*GetContainerDefinition_orig)(void* a1, unsigned int a2);
-static ContainerDefinition *GetContainerDefinition(void* a1, unsigned int a2) {
-	printf("\n\n\n\n\n\n\n\n\n\n\n\n\n********ContainerDefinitionManager::GetContainerDefinition return address: %p\n\n", _ReturnAddress());
-	printf("containerDefinitionId: %i\n", a2);
-	/*
-	char buffer[512];
-	MessageBox(
-		NULL,
-		buffer,
-		"ContainerDefinitionManager::GetContainerDefinition",
-		MB_ICONWARNING | MB_DEFBUTTON2
-	);
-	*/
-	ContainerDefinition* ret = GetContainerDefinition_orig(a1, a2);
-	printf("MAXIMUM_SLOTS %i\n", ret->MAXIMUM_SLOTS);
-	printf("MAX_BULK %i\n", ret->MAX_BULK);
-	return ret;
-}
-
-static void* (*GetItemErrorMessage_orig)(unsigned int a1);
-static void* GetItemErrorMessage(unsigned int a1) {
-	void* ret = GetItemErrorMessage_orig(a1);
-	printf("********GetItemErrorMessage return address: %p\n\n", _ReturnAddress());
-	return ret;
-}
-
-
-static __int64 (*sub_1405FE160_orig)(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, int a7, unsigned int a8);
-static __int64 sub_1405FE160(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, int a7, unsigned int a8) {
-	__int64 ret = sub_1405FE160_orig(a1, a2, a3, a4, a5, a6, a7, a8);
-	printf("********sub_1405FE160 return address: %p ret: %d\n\n", _ReturnAddress(), ret);
-	return ret;
-}
-
-
-
-static void (*GetItemErrorMessageReturn_orig)(double a1, unsigned int a2);
-static void GetItemErrorMessageReturn(double a1, unsigned int a2) {
-	printf("********GetItemErrorMessageReturn return address: %p\n\n", _ReturnAddress());
-	GetItemErrorMessageReturn_orig(a1, a2);
-}
-
-static void (*GetItemErrorMessageReturnReturn_orig)(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, void* a7);
-static void GetItemErrorMessageReturnReturn(void* a1, void* a2, void* a3, void* a4, double a5, void* a6, void* a7) {
-	printf("********GetItemErrorMessageReturnReturn return address: %p\n\n", _ReturnAddress());
-	GetItemErrorMessageReturnReturn_orig(a1, a2, a3, a4, a5, a6, a7);
-}
-
-static void (*sub_140B27400_orig)(void* a1, void* a2);
-static void sub_140B27400(void* a1, void* a2) {
-	printf("********sub_140B27400 return address: %p\n\n", _ReturnAddress());
-	sub_140B27400_orig(a1, a2);
-}
-
-static bool (*LoadoutIdValidate_orig)(ClientLoadoutManager* a1);
-static bool LoadoutIdValidate(ClientLoadoutManager* a1) {
-	bool ret = LoadoutIdValidate_orig(a1);
-	printf("********LoadoutIdValidate return address: %p, ret: %d\n\n", _ReturnAddress(), ret);
-	printf("activeLoadoutSlots %d\n", a1->activeLoadoutSlots);
-	printf("field_18 %d\n", a1->field_18);
-	printf("loadoutId %d\n", a1->loadoutId);
-	return true; // force loadoutId validation
-}
-
-
-static bool (*GetIsContainer_orig)(ClientItemDefinition* a1);
-static bool GetIsContainer(ClientItemDefinition* a1) {
-	bool ret = GetIsContainer_orig(a1);
-	printf("********GetIsContainer return address: %p, ret: %d\n\n", _ReturnAddress(), ret);
-	printf("ITEM_TYPE %d\n", a1->baseitemdefinition0.ITEM_TYPE);
-	printf("ID %d\n", a1->baseitemdefinition0.dword8);
-	return ret; 
-}
 
 //static void (*onPrintConsole_orig)(void* a1, void* a2, char a3, void* a4);
 static void onPrintConsole(void* a1, void* a2, char a3, void* a4) {
@@ -1351,33 +1140,26 @@ bool VCPatcher::Init()
 	hook::jump(0x140C06FD0, OnIntentionalCrash1);// exception inside 140C06FD0 somewhere
 #endif
 
-	// (Removed: WaitForWorldReady @0x140478080 + networkProximityUpdatesComplete @0x140389E10 — the server now
-	//  sends the world-ready packets (ZoneDoneSendingInitialData, DoneSendingPreloadCharacters,
-	//  NetworkProximityUpdatesComplete) on ClientIsReady, so WaitForWorldReady completes natively.)
-
 	// ###################################################     End of game patches     ############################################################
 
 	// ###################################################     Game hooks     ############################################################
 
 	// ####################     Release hooks     ####################
-	// ITEMDEFINITION: static 1-instruction cursor fix in ClientItemDefinitionManager::HandlePacket (replaces the
-	// old wrapper hook). At 0x140903CA6 `mov [rbx+10h], rax` (48 89 43 10) rewinds the read cursor to BEFORE the
-	// u32 ID; NOP it (90 90 90 90) so the cursor stays at pBuffer+4 (after the ID, set at 0x140903C8B) and the
-	// native reader parses the u16 compression header + LZ4-decompresses correctly. The ID is still captured
-	// (edi @0x140903C88, before the NOP). RE-confirmed (h1emu-re 9aa6ee1).
+	// ITEMDEFINITION: static 1-instruction cursor fix in ClientItemDefinitionManager::HandlePacket.
+	// At 0x140903CA6 `mov [rbx+10h], rax` (48 89 43 10) rewinds the read cursor to BEFORE the u32 ID; NOP it
+	// (90 90 90 90) so the cursor stays at pBuffer+4 (after the ID, set at 0x140903C8B) and the native reader
+	// parses the u16 compression header + LZ4-decompresses correctly. The ID is still captured (edi
+	// @0x140903C88, before the NOP). RE-confirmed (h1emu-re 9aa6ee1).
 	hook::nopVP(0x140903CA6, 4);
 
 	// LUA:
 	MH_CreateHook((char*)0x140488CC0, executeLuaFuncStub, (void**)&executeLuaFunc_orig);
 
-	// GROUP: hook removed — the server Group.Invite fix (inviteData source/target unknownByte1=1 + inviteType=1)
-	// makes the client's native Group.Join guards pass. COUPLED: only works with that server fix deployed.
-
 	// EMOTE + NIGHT-VISION HOTKEY REPAIR (Dec-2016 broken-trigger fix; see block above for full rationale):
 	// resolve the ASLR delta once, then install the single combined trampoline on Ability_ActivateByNameHash.
 	// The game resolves key -> bound InputProfile action -> nameHash before this call, so intercepting here is
 	// keybind-aware: emote nameHashes -> direct 0xf801 play+send; NV nameHash -> force-member+original; all
-	// other abilities -> original. (The old raw-F-key->slot ProcessInput hook is removed; it mis-mapped keys.)
+	// other abilities -> original.
 	g_emoteNvDelta = (uintptr_t)GetModuleHandleW(L"H1Z1.exe") - 0x140000000;
 	MH_CreateHook((char*)REBASE(0x140931E10), Ability_ActivateByNameHash_hook, (void**)&Ability_ActivateByNameHash_orig); // emote 0xf801 + NV 0xa101{1111272}
 
@@ -1393,84 +1175,11 @@ bool VCPatcher::Init()
 	
 	MH_CreateHook((char*)0x14133F230, handleCommand, (void**)&handleCommand_orig);
 
-	// ####################     Debug hooks     ####################
+	// ####################     Debug hooks (CONSOLE_ENABLED only)     ####################
 	#ifdef CONSOLE_ENABLED
-
-	// testing
-
-
-
-	//MH_CreateHook((char*)0x140B339D0, GetIsContainer, (void**)&GetIsContainer_orig);
-
-	//MH_CreateHook((char*)0x14178F530, LoadoutIdValidate, (void**)&LoadoutIdValidate_orig);
-
-	
-	//MH_CreateHook((char*)0x141787620, GetItemErrorMessage, (void**)&GetItemErrorMessage_orig);
-
-	//MH_CreateHook((char*)0x1405B9680, GetItemErrorMessageReturn, (void**)&GetItemErrorMessageReturn_orig);
-
-	//MH_CreateHook((char*)0x1405BC490, GetItemErrorMessageReturnReturn, (void**)&GetItemErrorMessageReturnReturn_orig);
-
-	//MH_CreateHook((char*)0x140B27400, sub_140B27400, (void**)&sub_140B27400_orig);
-
-	//MH_CreateHook((char*)0x1405FE160, sub_1405FE160, (void**)&sub_1405FE160_orig);
-
-	// ACCESSEDCHARACTERBASE HOOKS
-
-	//MH_CreateHook((char*)0x140602BE0, BeginCharacterAccessRead, (void**)&BeginCharacterAccessRead_orig);
-	//MH_CreateHook((char*)0x140374DF0, ItemsReadFunc, (void**)&ItemsReadFunc_orig);
-	//MH_CreateHook((char*)0x140BAA8C0, sub_140BAA8C0, (void**)&sub_140BAA8C0_orig);
-
-	// CONSTRUCTION HOOKS:
-
-	//MH_CreateHook((char*)0x140773B60, ConstructionPlacementFinalizePacket, (void**)&ConstructionPlacementFinalizePacket_orig);
-
-	// INVENTORY HOOKS:
-
-	//MH_CreateHook((char*)0x14036C1F0, ItemAddBytesWithLengthRead, (void**)&ItemAddBytesWithLengthRead_orig);
-	//MH_CreateHook((char*)0x140630DA0, HandleItemAddData, (void**)&HandleItemAddData_orig);
-	//MH_CreateHook((char*)0x14049DBD0, ClientPlayerItemManager__CreateItem, (void**)&ClientPlayerItemManager__CreateItem_orig);
-	//MH_CreateHook((char*)0x14036FE50, ReadItemDataFromBuffer, (void**)&ReadItemDataFromBuffer_orig);
-	
-	// LOADOUT HOOKS:
-
-	//MH_CreateHook((char*)0x1405C9770, loadoutBaseRead, (void**)&loadoutBaseRead_orig);
-	//MH_CreateHook((char*)0x1405C9970, loadoutSelectLoadoutRead, (void**)&loadoutSelectLoadoutRead_orig);
-	//MH_CreateHook((char*)0x1405C9BF0, loadoutSetCurrentLoadoutRead, (void**)&loadoutSetCurrentLoadoutRead_orig);
-	//MH_CreateHook((char*)0x1405C9E80, loadoutSelectSlotRead, (void**)&loadoutSelectSlotRead_orig);
-	
-	// CONTAINER HOOKS:
-
-	//MH_CreateHook((char*)0x1405FF9E0, containerEventBaseRead, (void**)&containerEventBaseRead_orig);
-	//MH_CreateHook((char*)0x1405FF230, containerErrorRead, (void**)&containerErrorRead_orig);
-	//MH_CreateHook((char*)0x1405FF3F0, containerAddContainerRead, (void**)&containerAddContainerRead_orig);
-
-	
-	//MH_CreateHook((char*)0x140447B70, sub_140447B70, (void**)&sub_140447B70_orig);
-	//MH_CreateHook((char*)0x1405FC580, sub_1405FC580, (void**)&sub_1405FC580_orig);
-
-	//MH_CreateHook((char*)0x1417543E0, GetContainerDefinition, (void**)&GetContainerDefinition_orig);
-
-	// EQUIPMENT HOOKS:
-
-	//MH_CreateHook((char*)0x1405819A0, equipmentEventBase, (void**)&equipmentEventBase_orig);
-	//MH_CreateHook((char*)0x140582110, setCharacterEquipmentSlot, (void**)&setCharacterEquipmentSlot_orig);
-	
-	//Other
-
-	// MH_CreateHook((char*)0x1403FD710, SpawnLightweightPc, (void**)&SpawnLightweightPc_orig);
-	
-	//Logging
-
-	//tryAllocConsole();
-
 	MH_CreateHook((char*)0x140337AE0, File__Open, (void**)&File__Open_orig);
-
-	MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); //hook absolutely every logging function
-
-	// logs usually written to a file
-	MH_CreateHook((char*)0x14032FA90, writeToLog, (void**)&writeToLog_orig); //hook absolutely every file logging function
-
+	MH_CreateHook((char*)0x1402ED6F0, logFuncCustomCallOrig, (void**)&logFuncCustomCallOrig_orig); // hook every logging function
+	MH_CreateHook((char*)0x14032FA90, writeToLog, (void**)&writeToLog_orig);                       // hook every file-logging function
 	#endif
 	
 	// ###################################################     End of game hooks     ############################################################
